@@ -10,7 +10,7 @@ class Q(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store"); super().end_headers()
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 8770), functools.partial(Q, directory=ROOT))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-BASE = "http://127.0.0.1:8770/index.html"
+BASE = os.environ.get("BASE", "http://127.0.0.1:8770/index.html")
 fails = []
 def check(name, cond, extra=""):
     print(("PASS " if cond else "FAIL ") + name + (" :: " + str(extra) if extra and not cond else ""))
