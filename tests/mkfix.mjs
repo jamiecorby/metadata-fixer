@@ -1,0 +1,13 @@
+import { readFileSync, writeFileSync, copyFileSync } from "fs";
+import { writeMetadata } from "@uswriting/exiftool";
+const d = "tests/fixtures/";
+const jpg = readFileSync(d + "plain.jpg");
+const w = await writeMetadata(new File([jpg], "x.jpg"), { "EXIF:DateTimeOriginal": "2018:05:06 09:10:11", "EXIF:CreateDate": "2018:05:06 09:10:11", "IFD0:Make": "Canon", "IFD0:Model": "Canon EOS 80D" }, { args: ["-m"] });
+writeFileSync(d + "existing_date_only.jpg", new Uint8Array(w.data));
+const w2 = await writeMetadata(new File([jpg], "x.jpg"), { "EXIF:DateTimeOriginal": "2020:02:01 08:00:00", "EXIF:OffsetTimeOriginal": "+00:00", "GPS:GPSLatitude": 51.5, "GPS:GPSLatitudeRef": "N", "GPS:GPSLongitude": 0.12, "GPS:GPSLongitudeRef": "W" }, { args: ["-m"] });
+writeFileSync(d + "complete.jpg", new Uint8Array(w2.data));
+for (const n of ["IMG_20190704_143000.jpg", "WhatsApp Image 2019-07-04 at 14.31.00.jpeg", "PXL_20190704_143200123.jpg", "IMG_5000.jpg", "DSC_0001.jpg", "IMG_1234.JPG", "FB_IMG_1562250600000.jpg"]) copyFileSync(d + "plain.jpg", d + n);
+writeFileSync(d + "IMG_5000.jpg.supplemental-metadata.json", JSON.stringify({ title: "IMG_5000.jpg", photoTakenTime: { timestamp: "1562247000", formatted: "4 Jul 2019, 13:30:00 UTC" }, geoData: { latitude: 38.7223, longitude: -9.1393, altitude: 50, latitudeSpan: 0, longitudeSpan: 0 }, creationTime: { timestamp: "1600000000" } }));
+writeFileSync(d + "DSC_0001.xmp", '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/" exif:DateTimeOriginal="2017-12-24T18:00:00-05:00" exif:GPSLatitude="40,42.768N" exif:GPSLongitude="74,0.36W"/></rdf:RDF></x:xmpmeta>');
+writeFileSync(d + "notes.txt", "not media");
+console.log("fixtures ok");

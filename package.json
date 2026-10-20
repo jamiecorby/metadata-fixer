@@ -1,0 +1,21 @@
+{
+  "name": "metadata-fixer",
+  "private": true,
+  "version": "2.0.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "python3 tests/run.py"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  },
+  "dependencies": {
+    "@6over3/zeroperl-ts": "1.0.10",
+    "@photostructure/tz-lookup": "11.2.0",
+    "@supabase/supabase-js": "2.45.4",
+    "@uswriting/exiftool": "1.0.9",
+    "fflate": "0.8.2",
+    "heic2any": "0.0.4"
+  },
+  "type": "module"
+}

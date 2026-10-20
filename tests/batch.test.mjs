@@ -1,0 +1,18 @@
+import { readFileSync } from "fs";
+import { runBatch } from "../src/vendor/exiftool.js";
+import { READ_ARGS } from "../src/core/existing.js";
+const fx = (n) => new File([readFileSync("tests/fixtures/" + n)], n);
+let t = Date.now();
+const files = ["plain.jpg", "complete.jpg", "plain.mp4", "plain.png", "existing_date_only.jpg"].map((n, i) => ({ path: `/f${i}.${n.split(".").pop()}`, data: fx(n) }));
+const r = await runBatch(files, [...READ_ARGS, ...files.map((f) => f.path)]);
+const j = JSON.parse(r.out);
+console.log("batch read", j.length, "files in", Date.now() - t, "ms; ok", r.ok, "err:", r.err.slice(0, 100));
+t = Date.now();
+const lines = [];
+const outPaths = [];
+files.forEach((f, i) => { lines.push("-m", "-XMP-xmp:Label=Batch " + i, "-EXIF:DateTimeOriginal=2020:01:0" + (i + 1) + " 10:00:00", "-o", `/o${i}.${f.path.split(".").pop()}`, f.path, "-execute"); outPaths.push(`/o${i}.${f.path.split(".").pop()}`); });
+const arg = { path: "/args.txt", data: new TextEncoder().encode(lines.join("\n") + "\n") };
+const w = await runBatch([...files, arg], ["-@", "/args.txt"], undefined, outPaths);
+console.log("batch write", Object.keys(w.outs).length, "outputs in", Date.now() - t, "ms; ok", w.ok, "err:", JSON.stringify(w.err.slice(0, 300)), "out:", JSON.stringify(w.out.slice(0, 200)));
+const back = await runBatch(outPaths.map((p) => ({ path: p.replace("/o", "/b"), data: w.outs[p] })), ["-json", "-G1", "-XMP-xmp:Label", "-ExifIFD:DateTimeOriginal", ...outPaths.map((p) => p.replace("/o", "/b"))]);
+console.log(JSON.parse(back.out).map((x) => x.SourceFile + " " + x["XMP-xmp:Label"] + " " + x["ExifIFD:DateTimeOriginal"]).join("\n"));

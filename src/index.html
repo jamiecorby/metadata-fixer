@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Metadata Fixer - restore dates and places on photos and videos</title>
+<meta name="description" content="Lost the dates and locations on your photos and videos? Metadata Fixer recovers them from file names, Google Takeout and the pictures themselves, then writes them back the way Apple Photos and Google Photos read them. Runs in your browser - your files are never uploaded.">
+<meta property="og:title" content="Metadata Fixer">
+<meta property="og:description" content="Restore dates, places and device details on photos and videos. Private: runs in your browser.">
+<meta name="theme-color" content="#0f766e">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/app.css?v=__V__">
+<script type="module" src="assets/main.js?v=__V__"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./" aria-label="Metadata Fixer home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>Metadata Fixer</span></a>
+  <span class="chip engine" id="engine" hidden></span>
+  <nav class="topnav">
+    <button class="ghost" id="btn-help" title="Keyboard shortcuts and help" aria-label="Help">?</button>
+    <button class="ghost" id="btn-settings">Settings</button>
+    <button class="ghost" id="btn-account" hidden></button>
+  </nav>
+</header>
+
+<main>
+<section id="landing">
+  <div class="hero">
+    <div class="hero-copy">
+      <h1>Get the dates and places back on your photos and videos.</h1>
+      <p class="lead">When metadata is lost (exports, transfers, messaging apps, Google Takeout), your library loses its order. Metadata Fixer recovers what it can from the files themselves, suggests the rest from the picture, and writes it back the way Apple Photos, Google Photos and Lightroom read it.</p>
+      <ul class="ticks">
+        <li><b>Private.</b> Files are processed in your browser and never uploaded.</li>
+        <li><b>Evidence first.</b> Surviving tags, Takeout sidecars and file names before any guess, with every value labelled by source and confidence.</li>
+        <li><b>Verified.</b> Every file is read back after writing and checked.</li>
+      </ul>
+    </div>
+    <label class="drop big" id="drop" for="pick">
+      <span class="drop-icon" aria-hidden="true"></span>
+      <b>Drop photos and videos here</b>
+      <span>or tap to choose files</span>
+      <small>JPEG, HEIC, PNG, TIFF, DNG, MP4, MOV . include Google Takeout .json and .xmp sidecars</small>
+    </label>
+    <div class="drop-alt"><button id="pickdir" class="ghost">Choose a whole folder</button></div>
+  </div>
+  <div class="how">
+    <div><span class="n">1</span><h3>Add files</h3><p>Folders and Google Takeout exports work. Existing metadata is read first, so nothing good is lost.</p></div>
+    <div><span class="n">2</span><h3>Review</h3><p>Each file shows its best evidence. Tell it the trip and place, ask the AI for the rest, or bulk-fix a whole selection at once.</p></div>
+    <div><span class="n">3</span><h3>Save</h3><p>Save straight to Photos, download the files, or get a ZIP, plus an audit log of every change.</p></div>
+  </div>
+  <div class="pricing" id="pricing">
+    <h2>Pricing</h2>
+    <div class="plans" id="plans"></div>
+    <p class="note">Credits never expire. One credit is one AI suggestion for one photo or video. Fixing, bulk editing, Takeout and file-name recovery are free.</p>
+  </div>
+  <div class="faq">
+    <h2>Questions</h2>
+    <details><summary>Do my photos get uploaded?</summary><p>No. Reading and writing metadata happens in your browser using ExifTool compiled to WebAssembly. Only if you ask for an AI suggestion is a small, metadata-free copy of that one image sent to the AI, and it isn't stored.</p></details>
+    <details><summary>Will it change my pictures?</summary><p>No. Only metadata is changed; image and video data are left as they are. Your originals stay untouched: you save new copies.</p></details>
+    <details><summary>What if a photo already has some metadata?</summary><p>By default it only fills what's missing. Anything already in the file is kept unless you choose to overwrite it.</p></details>
+    <details><summary>Does it handle time zones and daylight saving?</summary><p>Yes. Times are written with the correct offset for the place and date, so photos sort correctly in Apple Photos and Google Photos.</p></details>
+    <details><summary>How accurate are AI suggestions?</summary><p>They're estimates from what's visible: season, light, landmarks, signs. Each comes with a confidence and the reasons, and is never applied without your review.</p></details>
+  </div>
+</section>
+
+<section id="work" hidden>
+  <div class="lib">
+    <div class="libbar">
+      <div class="addrow"><button id="add-more">Add files</button><button id="add-dir" class="ghost">Add folder</button><button id="btn-context" class="ghost">Trip details</button><button id="btn-fill" class="ghost" disabled title="Fill missing dates and places from Trip details">Fill blanks</button></div>
+      <div class="ctxline" id="ctxline"></div>
+      <div class="filters" role="tablist" id="filters"></div>
+      <div class="selrow"><label class="chk"><input type="checkbox" id="selall"> <span id="selcount">Select all</span></label><span class="rowx"><select id="sortby" aria-label="Sort"><option value="name">By name</option><option value="date">By date</option><option value="status">By status</option></select><button class="ghost small" id="selmode" aria-pressed="false">Select</button></span></div>
+    </div>
+    <div class="grid" id="grid" role="listbox" aria-multiselectable="true" aria-label="Files"></div>
+  </div>
+  <aside class="insp" id="insp" aria-label="Details"></aside>
+</section>
+</main>
+
+<footer class="bar" id="bar" hidden>
+  <div class="bar-status" id="status" role="status" aria-live="polite"></div>
+  <progress id="prog" max="1" value="0" hidden></progress>
+  <div class="bar-actions">
+    <button id="b-stop" hidden>Stop</button>
+    <button id="b-ai">AI suggest</button>
+    <button id="b-ready">Mark ready</button>
+    <button id="b-export" class="pri">Export</button>
+  </div>
+</footer>
+
+<footer class="site">
+  <span>Metadata Fixer</span><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="#pricing" id="lnk-pricing">Pricing</a><a id="lnk-support" target="_blank" rel="noopener">Support</a>
+</footer>
+
+<input id="pick" type="file" multiple accept="image/*,video/*,.heic,.heif,.dng,.mov,.mp4,.m4v,.json,.xmp" hidden>
+<input id="dirpick" type="file" webkitdirectory multiple hidden>
+
+<dialog id="dlg-settings" class="dlg wide"><form method="dialog">
+  <header><h2>Settings</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body" id="settings-body"></div>
+</form></dialog>
+
+<dialog id="dlg-context" class="dlg"><form method="dialog">
+  <header><h2>Trip details</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body">
+    <p class="note">Tell it what you know. These details steer AI suggestions and power Fill blanks. Leave anything blank.</p>
+    <div class="two"><label>Month<select id="cx-month"></select></label><label>Year<input id="cx-year" inputmode="numeric" placeholder="e.g. 2019"></label></div>
+    <div class="two"><label>Or between<input type="date" id="cx-start"></label><label>and<input type="date" id="cx-end"></label></div>
+    <label>Where</label>
+    <div class="rowx"><span id="cx-area" class="pill-info">Anywhere</span><button type="button" id="cx-area-pick">Choose on map</button><button type="button" class="ghost" id="cx-area-clear">Clear</button></div>
+    <label>Notes for the AI<input id="cx-hint" maxlength="300" placeholder="e.g. family summer holiday, mostly beaches"></label>
+  </div>
+  <footer><button value="close" class="pri" id="cx-done">Done</button></footer>
+</form></dialog>
+
+<dialog id="dlg-map" class="dlg wide">
+  <header><h2 id="map-title">Choose a location</h2><button class="x" id="map-cancel" type="button" aria-label="Close">&times;</button></header>
+  <div class="dlg-body">
+    <div class="rowx"><input id="map-q" type="search" placeholder="Search a place, e.g. Lisbon or Eiffel Tower" autocomplete="off" style="flex:1 1 200px"><button type="button" id="map-go">Search</button></div>
+    <div id="map-results" class="results"></div>
+    <div id="map-canvas"></div>
+    <p class="note err" id="map-err"></p>
+    <div class="rowx" id="map-radius-row"><label class="grow">Radius <span id="map-r-val"></span><input type="range" id="map-r" min="1" max="500" step="1"></label></div>
+    <p class="note" id="map-pos"></p><p class="note">Map data &copy; OpenStreetMap contributors. Search by Nominatim.</p>
+  </div>
+  <footer><button type="button" class="pri" id="map-ok">Use this location</button></footer>
+</dialog>
+
+<dialog id="dlg-account" class="dlg"><form method="dialog">
+  <header><h2 id="acct-title">Account</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body" id="acct-body"></div>
+</form></dialog>
+
+<dialog id="dlg-export" class="dlg wide"><form method="dialog">
+  <header><h2>Export</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body" id="export-body"></div>
+</form></dialog>
+
+<dialog id="dlg-help" class="dlg"><form method="dialog">
+  <header><h2>Help</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body">
+    <h3>Keyboard</h3>
+    <table class="keys"><tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>Previous / next file</td></tr><tr><td><kbd>Space</kbd></td><td>Select or unselect</td></tr><tr><td><kbd>A</kbd></td><td>Mark ready (accept)</td></tr><tr><td><kbd>S</kbd></td><td>AI suggest</td></tr><tr><td><kbd>Ctrl/Cmd</kbd>+<kbd>A</kbd></td><td>Select all in view</td></tr><tr><td><kbd>Esc</kbd></td><td>Clear selection</td></tr><tr><td>Shift+click</td><td>Select a range</td></tr></table>
+    <h3>How values are chosen</h3>
+    <p class="note">Values are applied automatically only when the evidence is strong: what is already in the file, Google Takeout sidecars, XMP sidecars and dated file names. Everything else (neighbouring files, your trip details, AI estimates, file modified times) is offered as a suggestion for you to pick.</p>
+    <h3>Statuses</h3>
+    <p class="note"><b>Needs info</b>: no date yet. <b>Review</b>: changes planned, not yet accepted. <b>Ready</b>: accepted, will be exported. <b>Done</b>: written and verified. <b>Complete</b>: already had what it needs.</p>
+  </div>
+</form></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
