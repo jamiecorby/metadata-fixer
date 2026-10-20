@@ -1,5 +1,5 @@
 // Stripe webhook: verifies the signature, then adds purchased credits exactly once per Checkout session.
-import { admin } from "./common.ts";
+import { admin, stripeGet } from "./common.ts";
 const enc = new TextEncoder();
 async function hmacHex(secret: string, msg: string) {
   const k = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -21,13 +21,29 @@ Deno.serve(async (req) => {
   const ev = JSON.parse(raw);
   if (ev.type === "checkout.session.completed" || ev.type === "checkout.session.async_payment_succeeded") {
     const s = ev.data.object;
-    if (s.payment_status === "paid") {
+    if (s.payment_status === "paid" || s.payment_status === "no_payment_required") {
       const uid = s.client_reference_id || (s.metadata && s.metadata.user_id);
       const n = parseInt(s.metadata && s.metadata.credits, 10);
       if (uid && n > 0) {
         const { error } = await admin().rpc("add_credits", { p_user: uid, p_n: n, p_reason: "purchase", p_ref: "stripe:" + s.id });
         if (error) return new Response("db error", { status: 500 });
       }
+    }
+  }
+  // refunds and disputes take back the matching share of credits (never below zero)
+  if (ev.type === "charge.refunded" || ev.type === "charge.dispute.created") {
+    const o = ev.data.object;
+    const piId = typeof o.payment_intent === "string" ? o.payment_intent : o.payment_intent?.id;
+    if (piId) {
+      try {
+        const pi = await stripeGet("payment_intents/" + piId);
+        const uid = pi.metadata?.user_id, credits = parseInt(pi.metadata?.credits, 10), total = +pi.amount;
+        let amount = 0, ref = "";
+        if (ev.type === "charge.refunded") { const prev = +(ev.data.previous_attributes?.amount_refunded ?? 0); amount = +o.amount_refunded - prev; ref = "refund:" + ev.id; }
+        else { amount = +o.amount; ref = "dispute:" + o.id; }
+        const n = Math.ceil((credits * Math.max(0, amount)) / (total || 1));
+        if (uid && n > 0) { const { error } = await admin().rpc("remove_credits", { p_user: uid, p_n: n, p_reason: ev.type === "charge.refunded" ? "refund" : "dispute", p_ref: ref }); if (error) return new Response("db error", { status: 500 }); }
+      } catch (_e) { return new Response("lookup failed", { status: 500 }); }
     }
   }
   return new Response(JSON.stringify({ received: true }), { headers: { "content-type": "application/json" } });

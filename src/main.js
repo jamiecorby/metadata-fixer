@@ -1,7 +1,7 @@
 // Metadata Fixer - application shell and UI.
 import { zipSync } from "fflate";
 import { CONFIG } from "./config.js";
-import { S, MONTHS, PHOTO, VIDEO, newItem, dateCands, locCands, autopick, applyAiTop, plan, status, STATUS_LABEL, warnings, describe, itemZone, zoneLabel, monthCtx, rangeCtx, inCtxDate, inCtxArea, zoneAt } from "./app/model.js";
+import { S, MONTHS, PHOTO, VIDEO, newItem, rezone, dateCands, locCands, autopick, applyAiTop, plan, status, STATUS_LABEL, warnings, describe, itemZone, zoneLabel, monthCtx, rangeCtx, inCtxDate, inCtxArea, zoneAt } from "./app/model.js";
 import { human, exif, parseStamp, naive } from "./core/time.js";
 import { offsetFor, fmtOffset, allZones, isZone, parseFixed, localZone } from "./core/tz.js";
 import { interpretExisting } from "./core/existing.js";
@@ -241,7 +241,7 @@ function renderInspector() {
   on("i-unready", "onclick", () => { it.ready = false; refresh(it); });
   on("i-reset", "onclick", () => { it.date = null; it.loc = null; it.zone = null; it.ready = false; it.out = null; it.dev = S.settings.dev; autopick(it); refresh(it); });
 }
-function touched(it) { it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; refresh(it); }
+function touched(it) { rezone(it); it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; refresh(it); }
 function focusItem(it, open = true) {
   if (!it) return;
   S.focus = it.id; S.sel = new Set([it.id]); showAll = { d: false, l: false };
@@ -270,7 +270,7 @@ function renderBulk(el, sel) {
   </div>
   <div class="actions"><button class="pri" id="b-rdy">Mark ${sel.length} ready</button><button id="b-unrdy">Unmark</button></div>`;
   el.classList.toggle("open", mobile() && S.insOpen === true); document.body.classList.toggle("sheet", mobile() && S.insOpen === true);
-  const apply = (fn, msg) => { let n = 0; for (const it of sel) if (fn(it) !== false) { it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; n++; } for (const it of sel) updateTile(it); refresh(); toast(msg(n)); };
+  const apply = (fn, msg) => { let n = 0; for (const it of sel) if (fn(it) !== false) { rezone(it); it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; n++; } for (const it of sel) updateTile(it); refresh(); toast(msg(n)); };
   $("#b-back").onclick = () => { S.insOpen = false; el.classList.remove("open"); document.body.classList.remove("sheet"); };
   $("#b-clear").onclick = () => { S.sel = new Set(S.focus ? [S.focus] : []); renderAll(); };
   $("#b-dt-go").onclick = () => { const t = fromLocalInput($("#b-dt").value); if (t == null) return toast("Enter a date and time first."); apply((it) => { it.date = { t, off: null, src: "manual", label: "Entered by you", conf: 1, manual: true }; }, (n) => `Date set on ${plural(n, "file")}.`); };
@@ -374,7 +374,7 @@ function fillBlanks() {
       const t = Math.round((r[0] + 12 * 3.6e6 + ((r[1] - r[0] - 24 * 3.6e6) * (k > 1 ? i / (k - 1) : 0.5))) / 3.6e6) * 3.6e6;
       it.date = { t, off: null, src: "context", label: "Spread through your trip dates", conf: 0.3, manual: false }; ch = true;
     }
-    if (ch) { n++; updateTile(it); }
+    if (ch) { rezone(it); n++; updateTile(it); }
   }
   refresh(); toast(n ? `Filled blanks on ${plural(n, "file")}. These are rough: review them.` : "Nothing to fill: those files already have dates and places.");
 }

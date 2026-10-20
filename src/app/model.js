@@ -78,15 +78,15 @@ export function dateCands(it) {
   const add = (c) => { if (c.t == null || isNaN(c.t) || !plausible(c.t)) return; if (!C.some((x) => x.src === c.src && Math.abs(x.t - c.t) < 60000)) C.push(c); };
   const ex = it.ex && it.ex.date;
   if (ex) {
-    if (ex.t != null) add({ t: ex.t, off: ex.off, src: "existing", label: `Already in the file`, note: ex.tag + (ex.off == null ? ", no time zone" : ""), conf: ex.weak ? 0.5 : 1 });
-    else if (ex.u != null) add({ t: utcToNaive(zone, ex.u), off: null, src: "existing", label: "Already in the file", note: `${ex.tag} (UTC), shown in ${zoneLabel(zone)}`, conf: 1 });
+    if (ex.t != null) add({ t: ex.t, off: ex.off, src: "existing", label: `Already in the file`, note: ex.tag + (ex.dateOnly ? ", date only" : ex.off == null ? ", no time zone" : ""), conf: ex.weak ? 0.5 : ex.dateOnly ? 0.92 : 1 });
+    else if (ex.u != null) add({ t: utcToNaive(zone, ex.u), u: ex.u, off: null, src: "existing", label: "Already in the file", note: `${ex.tag} (UTC), shown in ${zoneLabel(zone)}`, conf: 1 });
   }
   const tk = it.side && it.side.takeout;
-  if (tk && tk.utc) { const z = tk.lat != null ? zoneAt(tk.lat, tk.lon) || zone : zone; add({ t: utcToNaive(z, tk.utc), off: null, zone: z, src: "takeout", label: "Google Takeout sidecar", note: `photoTakenTime, shown in ${zoneLabel(z)}`, conf: 0.97 }); }
+  if (tk && tk.utc) { const z = tk.lat != null ? zoneAt(tk.lat, tk.lon) || zone : zone; add({ t: utcToNaive(z, tk.utc), u: tk.utc, off: null, src: "takeout", label: "Google Takeout sidecar", note: `photoTakenTime, shown in ${zoneLabel(z)}`, conf: 0.97 }); }
   const xm = it.side && it.side.xmp;
   if (xm && xm.dt) add({ t: xm.dt.t, off: xm.dt.off, src: "xmp", label: "XMP sidecar", note: xm.dt.hasTime ? "" : "date only", conf: xm.dt.hasTime ? 0.95 : 0.6 });
   const fnm = fromFileName(it.name);
-  if (fnm) add({ t: fnm.utc ? utcToNaive(zone, fnm.t) : fnm.t, off: null, src: "filename", label: `From the file name (${fnm.label})`, note: fnm.precision === "day" ? "date only, time set to 12:00" : fnm.utc ? `timestamp, shown in ${zoneLabel(zone)}` : "", conf: fnm.precision === "day" ? 0.6 : 0.9 });
+  if (fnm) add({ t: fnm.utc ? utcToNaive(zone, fnm.t) : fnm.t, u: fnm.utc ? fnm.t : undefined, off: null, src: "filename", label: `From the file name (${fnm.label})`, note: fnm.precision === "day" ? "date only, time set to 12:00" : fnm.utc ? `timestamp, shown in ${zoneLabel(zone)}` : "", conf: fnm.precision === "day" ? 0.6 : 0.9 });
   if (it.ai && it.ai.dates) {
     const rng = rangeCtx(), mc = monthCtx();
     for (const d of it.ai.dates) {
@@ -106,7 +106,9 @@ export function dateCands(it) {
     const n = S.items.length, s0 = Date.UTC(mc.y, mc.m - 1, 1, 12), e0 = Date.UTC(mc.y, mc.m, 0, 12);
     add({ t: Math.round((s0 + (e0 - s0) * (n > 1 ? idx / (n - 1) : 0.5)) / 3.6e6) * 3.6e6, off: null, src: "context", label: `Spaced through ${MONTHS[mc.m - 1]} ${mc.y}`, note: "by file order", conf: 0.3 });
   }
-  if (it.mtime) add({ t: utcToNaive(zone, it.mtime), off: null, src: "mtime", label: "File modified time", note: "often the date it was copied or downloaded, not taken", conf: 0.2 });
+  if (it.mtime) add({ t: utcToNaive(zone, it.mtime), u: it.mtime, off: null, src: "mtime", label: "File modified time", note: "often the date it was copied or downloaded, not taken", conf: 0.2 });
+  // a dated file name on the same day refines a date-only value already in the file
+  if (ex && ex.dateOnly) for (const c of C) if (c.src !== "existing" && dayOnly(c.t) === dayOnly(ex.t) && c.conf >= 0.6) { c.conf = Math.max(c.conf, 0.95); c.note = (c.note ? c.note + "; " : "") + "adds the time to the date already in the file"; }
   return C.sort((a, b) => b.conf - a.conf);
 }
 
@@ -132,24 +134,31 @@ export function autopick(it) {
   if (!it.loc || !it.loc.manual) { const b = locCands(it).find((c) => c.conf >= 0.9); it.loc = b ? { ...b, manual: false } : it.loc && it.loc.src === "ai" ? it.loc : null; }
   if (!it.date || !it.date.manual) { const b = dateCands(it).find((c) => c.conf >= 0.6); it.date = b ? { ...b, manual: false } : it.date && it.date.src === "ai" ? it.date : null; }
   if (it.dev == null) it.dev = S.settings.dev;
+  rezone(it);
 }
 /** Apply the top AI suggestion (date and location) unless the user already chose. */
 export function applyAiTop(it) {
   const d = dateCands(it).find((c) => c.src === "ai"); const l = locCands(it).find((c) => c.src === "ai");
   if (d && (!it.date || (!it.date.manual && it.date.conf < d.conf))) it.date = { ...d, manual: false };
   if (l && (!it.loc || (!it.loc.manual && it.loc.conf < l.conf))) it.loc = { ...l, manual: false };
+  rezone(it);
 }
 
+/** Keep wall-clock display in step with the zone for values that came from an absolute time. */
+export function rezone(it) {
+  if (it.date && it.date.u != null) { const p = plan(it); if (p.t != null) it.date = { ...it.date, t: p.t }; }
+}
 /** What will be written. */
 export function plan(it) {
   const st = S.settings, ex = it.ex || {};
   const d = it.date, l = it.loc;
   const exDate = ex.date && !ex.date.weak ? ex.date : null;
   const overwrite = st.policy === "overwrite";
-  const t = d ? d.t : null;
   const zone = it.zone || (l ? l.zone || zoneAt(l.la, l.lo) || st.zone : itemZone(it));
+  // absolute (UTC) sources are converted with the FINAL zone, so a later location or zone change can't shift the instant
+  const t = d ? (d.u != null ? utcToNaive(zone, d.u) : d.t) : null;
   const off = t == null ? null : it.zone ? offsetFor(it.zone, t) : d && d.off != null ? d.off : offsetFor(zone, t);
-  const wDate = !!d && d.src !== "existing" && (overwrite || !exDate || d.manual);
+  const wDate = !!d && d.src !== "existing" && (overwrite || !exDate || d.manual || (exDate.dateOnly && t != null && dayOnly(t) === dayOnly(exDate.t)));
   const wGps = !!l && l.src !== "existing" && (overwrite || !ex.gps || l.manual);
   // add a missing time zone to an existing date once the place is known
   const offsetOnly = !wDate && !!exDate && exDate.off == null && !!(l || ex.gps) && t != null;

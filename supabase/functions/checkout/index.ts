@@ -11,14 +11,14 @@ Deno.serve(async (req) => {
   const pack = PACKS[body.pack || ""];
   if (!pack) return json(req, { error: "Unknown pack" }, 400);
   let ret = ALLOWED_ORIGINS[0] + "/metadata-fixer/";
-  try { const u = new URL(body.return_url || ""); if (ALLOWED_ORIGINS.includes(u.origin)) ret = u.origin + u.pathname; } catch { /* default */ }
+  try { const u = new URL(body.return_url || ""); if (ALLOWED_ORIGINS.includes(u.origin) && u.pathname.startsWith("/metadata-fixer")) ret = u.origin + u.pathname; } catch { /* default */ }
   const f = new URLSearchParams({
     mode: "payment", "success_url": ret + "?checkout=success", "cancel_url": ret + "?checkout=cancel",
     "client_reference_id": user.id, "customer_email": user.email || "", "allow_promotion_codes": "true",
     "line_items[0][quantity]": "1", "line_items[0][price_data][currency]": "usd", "line_items[0][price_data][unit_amount]": String(pack.cents),
     "line_items[0][price_data][product_data][name]": pack.name,
     "metadata[credits]": String(pack.credits), "metadata[user_id]": user.id, "metadata[pack]": body.pack!,
-    "payment_intent_data[metadata][user_id]": user.id,
+    "payment_intent_data[metadata][user_id]": user.id, "payment_intent_data[metadata][credits]": String(pack.credits),
   });
   if (!user.email) f.delete("customer_email");
   const r = await fetch("https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { authorization: "Bearer " + sk, "content-type": "application/x-www-form-urlencoded" }, body: f });

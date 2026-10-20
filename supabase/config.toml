@@ -1,0 +1,10 @@
+# Supabase function settings (deploy with: supabase functions deploy <name>)
+[functions.suggest]
+verify_jwt = true
+
+[functions.checkout]
+verify_jwt = true
+
+# Stripe does not send a Supabase JWT; the function verifies Stripe's signature instead.
+[functions.stripe-webhook]
+verify_jwt = false

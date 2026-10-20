@@ -35,6 +35,7 @@ export async function callFn(name, body) {
     r = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${name}`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + s.session.access_token, apikey: CONFIG.supabaseKey }, body: JSON.stringify(body) });
   } catch (e) { throw Object.assign(new Error("Could not reach the server. Check your connection."), { code: "network" }); }
   let j = {}; try { j = await r.json(); } catch (e) {}
+  if (typeof j.credits === "number") { acct.credits = j.credits; emit(); }
   if (r.status === 402) throw Object.assign(new Error("You're out of AI credits."), { code: "no_credits" });
   if (r.status === 401) throw Object.assign(new Error("Please sign in again."), { code: "signin" });
   if (r.status === 429) throw Object.assign(new Error("Too many requests at once. Wait a moment."), { code: "rate_limited" });

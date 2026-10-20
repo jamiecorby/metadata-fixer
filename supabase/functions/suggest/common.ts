@@ -1,6 +1,6 @@
 // Shared helpers for Metadata Fixer edge functions.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-export const ALLOWED_ORIGINS = ["https://jamiecorby.github.io", "http://127.0.0.1:8770", "http://localhost:8770"];
+export const ALLOWED_ORIGINS = ["https://jamiecorby.github.io"];
 export function cors(req: Request): Record<string, string> {
   const o = req.headers.get("origin") || "";
   return { "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(o) ? o : ALLOWED_ORIGINS[0], "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS", "Vary": "Origin" };
@@ -18,3 +18,10 @@ export const PACKS: Record<string, { credits: number; cents: number; name: strin
   pack_500: { credits: 500, cents: 1900, name: "Metadata Fixer - 500 AI credits" },
   pack_2000: { credits: 2000, cents: 5900, name: "Metadata Fixer - 2,000 AI credits" },
 };
+export async function stripeGet(path: string) {
+  const sk = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!sk) throw new Error("Stripe not configured");
+  const r = await fetch("https://api.stripe.com/v1/" + path, { headers: { authorization: "Bearer " + sk } });
+  if (!r.ok) throw new Error("Stripe " + r.status);
+  return await r.json();
+}

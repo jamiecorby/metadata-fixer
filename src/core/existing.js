@@ -1,7 +1,7 @@
 // Interpret ExifTool output (-json -n -G1 -a) into the facts we trust.
 import { parseStamp, plausible } from "./time.js";
 
-const PHOTO_DATES = ["ExifIFD:DateTimeOriginal", "XMP-exif:DateTimeOriginal", "XMP-photoshop:DateCreated", "ExifIFD:CreateDate", "XMP-xmp:CreateDate", "IPTC:DateCreated", "PNG:CreationTime", "IFD0:ModifyDate"];
+const PHOTO_DATES = ["ExifIFD:DateTimeOriginal", "XMP-exif:DateTimeOriginal", "XMP-photoshop:DateCreated", "Composite:DateTimeCreated", "ExifIFD:CreateDate", "XMP-xmp:CreateDate", "PNG:CreationTime", "IFD0:ModifyDate"];
 const OFFSETS = ["ExifIFD:OffsetTimeOriginal", "ExifIFD:OffsetTime", "ExifIFD:OffsetTimeDigitized"];
 function offStr(s) { const m = /^([+-])(\d{2}):?(\d{2})$/.exec(String(s || "").trim()); return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]) : null; }
 
@@ -24,22 +24,27 @@ export function interpretExisting(r, kind, now = Date.now()) {
       }
     }
   } else {
+    let dayOnly = null;
     for (const tag of PHOTO_DATES) {
       const p = parseStamp(r[tag]);
-      if (p && p.hasTime && plausible(p.t, now)) {
-        let off = p.off;
-        if (off == null) for (const o of OFFSETS) { const v = offStr(r[o]); if (v != null) { off = v; break; } }
-        date = { t: p.t, off, tag, weak: tag === "IFD0:ModifyDate" };
-        break;
-      }
+      if (!p || !plausible(p.t, now)) continue;
+      if (!p.hasTime) { if (!dayOnly) dayOnly = { t: p.t, off: null, tag, weak: false, dateOnly: true }; continue; }
+      let off = p.off;
+      if (off == null) for (const o of OFFSETS) { const v = offStr(r[o]); if (v != null) { off = v; break; } }
+      date = { t: p.t, off, tag, weak: tag === "IFD0:ModifyDate" };
+      break;
     }
+    if (!date || (date.weak && dayOnly)) date = dayOnly || date;
   }
   let gps = null;
-  const la = +r["Composite:GPSLatitude"], lo = +r["Composite:GPSLongitude"];
-  if (isFinite(la) && isFinite(lo) && (Math.abs(la) > 1e-7 || Math.abs(lo) > 1e-7) && r["Composite:GPSLatitude"] != null) {
-    const alt = r["Composite:GPSAltitude"] != null ? +r["Composite:GPSAltitude"] : null;
-    gps = { la, lo, alt: isFinite(alt) ? alt : null, tag: "GPS" };
-  } else {
+  for (const [A, B, tag] of [["Composite:GPSLatitude", "Composite:GPSLongitude", "GPS"], ["XMP-exif:GPSLatitude", "XMP-exif:GPSLongitude", "XMP GPS"]]) {
+    const la = +r[A], lo = +r[B];
+    if (r[A] != null && r[B] != null && Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180 && (Math.abs(la) > 1e-7 || Math.abs(lo) > 1e-7)) {
+      const alt = r["Composite:GPSAltitude"] != null ? +r["Composite:GPSAltitude"] : null;
+      gps = { la, lo, alt: Number.isFinite(alt) ? alt : null, tag }; break;
+    }
+  }
+  if (!gps) {
     for (const tag of ["Keys:GPSCoordinates", "UserData:GPSCoordinates", "Keys:LocationISO6709"]) {
       const s = r[tag];
       if (!s) continue;
@@ -53,4 +58,4 @@ export function interpretExisting(r, kind, now = Date.now()) {
   const model = r["IFD0:Model"] || r["Keys:Model"] || r["UserData:Model"] || null;
   return { date, gps, device: make || model ? { make, model } : null };
 }
-export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-ExifIFD:LensModel", "-XMP:all", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize"];
+export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-ExifIFD:LensModel", "-XMP:all", "-IPTC:all", "-Composite:DateTimeCreated", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize"];
