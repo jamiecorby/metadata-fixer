@@ -9,7 +9,7 @@ export async function initAccount() {
   if (!acct.configured) { acct.ready = true; emit(); return; }
   const { createClient } = await import("@supabase/supabase-js");
   sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" } });
-  sb.auth.onAuthStateChange((_e, session) => { const u = session ? session.user : null; const changed = (u && u.id) !== (acct.user && acct.user.id); acct.user = u; if (changed) refreshCredits(); else emit(); });
+  sb.auth.onAuthStateChange((_e, session) => { const u = session ? session.user : null; const changed = (u && u.id) !== (acct.user && acct.user.id); acct.user = u; if (changed) setTimeout(refreshCredits, 0); else emit(); });
   const { data } = await sb.auth.getSession();
   acct.user = data.session ? data.session.user : null; acct.ready = true;
   if (location.hash.includes("access_token")) history.replaceState(null, "", location.pathname + location.search);

@@ -6,7 +6,7 @@ class Q(http.server.SimpleHTTPRequestHandler):
 srv=http.server.ThreadingHTTPServer(("127.0.0.1",8772),functools.partial(Q,directory=ROOT)); threading.Thread(target=srv.serve_forever,daemon=True).start()
 async def main():
   async with async_playwright() as p:
-    b=await p.chromium.launch(); pg=await (await b.new_context(viewport={"width":1280,"height":860})).new_page()
+    b=await p.chromium.launch(); pg=await (await b.new_context(bypass_csp=True, viewport={"width":1280,"height":860})).new_page()
     pg.on("console",lambda m: print("CONSOLE",m.text)); errs=[]; pg.on("pageerror",lambda e:errs.append(str(e)+" @ "+str(e.stack)[:600]))
     await pg.goto("http://127.0.0.1:8772/index.html")
     await pg.set_input_files("#pick",[os.path.join(ROOT,"tests/fixtures/IMG_1234.JPG"),os.path.join(ROOT,"tests/fixtures/plain.png")])

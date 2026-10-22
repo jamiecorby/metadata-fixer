@@ -39,8 +39,10 @@ let queue = Promise.resolve();
 function serial(fn) { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; }
 const safeName = (n) => n.replace(/[^\w.\-() ]+/g, "_").slice(-120) || "file";
 function cleanErr(e) {
-  const s = String(e || "Unknown error").replace(/\s+/g, " ").trim();
+  const s = String(e || "Unknown error").replace(/\s+/g, " ").replace(/^error:\s*/i, "").trim();
+  if (/truncated/i.test(s)) return "This file is cut short (truncated), so its metadata can't be written safely. Re-export or re-download it and try again.";
   if (/looks more like a (\w+)/i.test(s)) return `The file's contents don't match its extension (${s.match(/looks more like a (\w+)/i)[1]} data). Rename it with the right extension and try again.`;
+  if (/corrupt/i.test(s)) return "The image data is corrupted, so its metadata can't be written safely. Try re-exporting or re-downloading the original.";
   if (/not a valid/i.test(s)) return "The file appears to be damaged or is not a supported format.";
   return s.slice(0, 240);
 }
@@ -71,6 +73,7 @@ function chunks(list, maxN, maxBytes) {
   if (cur.length) out.push(cur);
   return out;
 }
+export const hardErr = (err, path) => String(err || "").split("\n").some((x) => x.includes(path) && /^\s*error/i.test(x));
 const errFor = (err, path) => { const l = String(err || "").split("\n").filter((x) => x.includes(path) && /error|warning/i.test(x)); return cleanErr(l.join(" ").replace(path, "").replace(/\s+-\s*$/, "") || "Unknown error"); };
 /** items [{id, blob, name}] -> Map(id -> exiftool JSON object | Error). onChunk(doneCount) */
 export async function readMany(items, onChunk) {
@@ -105,7 +108,7 @@ export async function writeMany(jobs, onChunk) {
       }
       files.push({ path: "/args.txt", data: new File([lines.join("\n") + "\n"], "args.txt") });
       const r = await (await lib()).runBatch(files, ["-@", "/args.txt"], wfetch, outs);
-      for (const j of part) res.set(j.id, r.outs[j._out] && r.outs[j._out].length ? r.outs[j._out] : new Error(errFor(r.err, j._in)));
+      for (const j of part) res.set(j.id, !hardErr(r.err, j._in) && r.outs[j._out] && r.outs[j._out].length ? r.outs[j._out] : new Error(errFor(r.err, j._in)));
     });
     onChunk && onChunk(res.size);
   }

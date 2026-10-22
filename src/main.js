@@ -4,7 +4,7 @@ import { CONFIG } from "./config.js";
 import { S, MONTHS, PHOTO, VIDEO, newItem, rezone, dateCands, locCands, autopick, applyAiTop, plan, status, STATUS_LABEL, warnings, describe, itemZone, zoneLabel, monthCtx, rangeCtx, inCtxDate, inCtxArea, zoneAt } from "./app/model.js";
 import { human, exif, parseStamp, naive } from "./core/time.js";
 import { offsetFor, fmtOffset, allZones, isZone, parseFixed, localZone } from "./core/tz.js";
-import { interpretExisting } from "./core/existing.js";
+import { interpretExisting, realExt } from "./core/existing.js";
 import { parseTakeout, parseXmp, sidecarMatcher, isSidecar } from "./core/sidecars.js";
 import { buildTags, verify } from "./core/tags.js";
 import { IPHONES, profileFor } from "./core/devices.js";
@@ -72,7 +72,7 @@ async function readQueue(items) {
     for (const it of part) {
       const r = it.size > 1.5e9 ? new Error("This file is too large to process in the browser (over 1.5 GB).") : res.get(it.id);
       if (r instanceof Error || !r) { it.ex = { date: null, gps: null, device: null }; it.exErr = r ? r.message : "Could not read this file."; }
-      else { it.exRaw = r; it.ex = interpretExisting(r, it.kind); }
+      else { it.exRaw = r; it.ex = interpretExisting(r, it.kind); it.realExt = realExt(it.ex.fileExt, it.name); }
       it.exState = "done"; autopick(it); updateTile(it);
     }
     renderFilters(); renderBar();
@@ -89,40 +89,65 @@ const tiles = new Map();
 const io = "IntersectionObserver" in window ? new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { const it = byId(+e.target.dataset.id); if (it && !it.thumb && !it.prevErr) makeThumb(it).then(() => updateTile(it)); io.unobserve(e.target); } }, { rootMargin: "400px" }) : null;
 
 const RANK = { needs: 0, loading: 0, review: 1, failed: 1, ready: 2, done: 3, ok: 4 };
-function visible() {
+// One pass computes every file's status, the visible list and the counts; it is reused until something changes.
+let _view = null;
+const dirty = () => { _view = null; };
+function computeView() {
+  const st = new Map(); for (const it of S.items) st.set(it.id, status(it));
   const f = S.filter;
-  const list = S.items.filter((it) => { const s = status(it); return f === "all" || (f === "done" ? s === "done" || s === "ok" : f === "needs" ? s === "needs" || s === "loading" : s === f); });
+  const vis = S.items.filter((it) => { const s = st.get(it.id); return f === "all" || (f === "done" ? s === "done" || s === "ok" : f === "needs" ? s === "needs" || s === "loading" : s === f); });
   const tOf = (x) => (x.date ? x.date.t : x.ex && x.ex.date && x.ex.date.t != null ? x.ex.date.t : Infinity);
-  if (S.sort === "date") list.sort((a, b) => tOf(a) - tOf(b) || collator.compare(a.path, b.path));
-  else if (S.sort === "status") list.sort((a, b) => RANK[status(a)] - RANK[status(b)] || collator.compare(a.path, b.path));
-  return list;
+  if (S.sort === "date") vis.sort((a, b) => tOf(a) - tOf(b) || collator.compare(a.path, b.path));
+  else if (S.sort === "status") vis.sort((a, b) => RANK[st.get(a.id)] - RANK[st.get(b.id)] || collator.compare(a.path, b.path));
+  const c = { all: S.items.length, needs: 0, review: 0, ready: 0, done: 0, failed: 0 };
+  for (const it of S.items) { const s = st.get(it.id); if (s === "needs" || s === "loading") c.needs++; else if (s === "ok" || s === "done") c.done++; else c[s]++; }
+  return { st, vis, counts: c };
 }
-function tileHtml(it) {
-  const s = status(it);
+const view = () => _view || (_view = computeView());
+const visible = () => view().vis;
+const counts = () => view().counts;
+const stOf = (it) => { const s = view().st.get(it.id); return s === undefined ? status(it) : s; };
+function tileHtml(it, known) {
+  const s = known || status(it);
   return `${it.thumb ? `<img class="th" src="${it.thumb}" alt="" loading="lazy" decoding="async">` : `<div class="ph">${it.prevErr ? "No preview" : it.kind === "video" ? "Video" : "..."}</div>`}
   <span class="st st-${s}">${STATUS_LABEL[s]}</span>${it.kind === "video" ? '<span class="vid">VIDEO</span>' : ""}<span class="ck" data-ck="1"></span>
   <div class="meta"><div class="nm" title="${esc(it.path)}">${esc(it.name)}</div><div class="ds">${esc(describe(it))}</div></div>`;
 }
-function updateTile(it) {
+function updateTile(it, known, keep) {
+  if (!keep) dirty();
   const el = tiles.get(it.id); if (!el) return;
-  const s = status(it);
+  const s = known || status(it);
   el.className = `tile st-${s}${S.sel.has(it.id) ? " sel" : ""}${S.focus === it.id ? " focus" : ""}`;
-  el.innerHTML = tileHtml(it);
+  el.innerHTML = tileHtml(it, s);
   el.setAttribute("aria-selected", S.sel.has(it.id) ? "true" : "false");
+  el.tabIndex = S.focus === it.id ? 0 : -1;
 }
+/** Selection or focus changed: toggle classes only (no re-render of tile contents). */
+function paintSel() {
+  $("#grid").classList.toggle("selecting", S.selectMode || S.sel.size > 1);
+  let tabbable = false;
+  for (const [id, el] of tiles) {
+    const on = S.sel.has(id), fo = S.focus === id;
+    if (el.classList.contains("sel") !== on) { el.classList.toggle("sel", on); el.setAttribute("aria-selected", on ? "true" : "false"); }
+    if (el.classList.contains("focus") !== fo) el.classList.toggle("focus", fo);
+    el.tabIndex = fo ? 0 : -1; if (fo) tabbable = true;
+  }
+  if (!tabbable) { const f = visible()[0]; const el = f && tiles.get(f.id); if (el) el.tabIndex = 0; }
+}
+function selChanged() { paintSel(); renderFilters(); renderInspector(); renderBar(); }
 function renderGrid() {
-  const g = $("#grid"), list = visible();
+  const g = $("#grid"), v = view(), list = v.vis;
   g.classList.toggle("selecting", S.selectMode || S.sel.size > 1);
   if (!list.length) { g.innerHTML = `<div class="empty">${S.items.length ? "Nothing in this view." : "No files yet."}</div>`; return; }
   const frag = document.createDocumentFragment();
   for (const it of list) {
     let el = tiles.get(it.id);
     if (!el) { el = document.createElement("div"); el.dataset.id = it.id; el.tabIndex = 0; el.setAttribute("role", "option"); tiles.set(it.id, el); io && io.observe(el); if (!io) makeThumb(it).then(() => updateTile(it)); }
-    updateTile(it); frag.appendChild(el);
+    updateTile(it, v.st.get(it.id), true); frag.appendChild(el);
   }
   g.replaceChildren(frag);
+  if (!list.some((x) => x.id === S.focus)) { const el = tiles.get(list[0].id); if (el) el.tabIndex = 0; }
 }
-function counts() { const c = { all: S.items.length, needs: 0, review: 0, ready: 0, done: 0, failed: 0 }; for (const it of S.items) { const s = status(it); if (s === "needs" || s === "loading") c.needs++; else if (s === "ok" || s === "done") c.done++; else c[s]++; } return c; }
 function renderFilters() {
   const c = counts();
   const defs = [["all", "All"], ["needs", "Needs info"], ["review", "Review"], ["ready", "Ready"], ["done", "Done"]].concat(c.failed ? [["failed", "Failed"]] : []);
@@ -149,11 +174,11 @@ function renderBar() {
   const loading = S.items.filter((x) => x.exState === "pending").length;
   setStatus(loading ? `Reading metadata... ${S.items.length - loading} of ${S.items.length}` : `${plural(S.items.length, "file")} . ${c.needs} need info . ${c.review} to review . ${c.ready} ready${sel.length > 1 ? ` . <b>${sel.length} selected</b>` : ""}`);
 }
-function renderAll() { renderFilters(); renderGrid(); renderCtxLine(); renderInspector(); renderBar(); }
-function refresh(it) { if (it) updateTile(it); renderFilters(); renderInspector(); renderBar(); }
+function renderAll() { dirty(); renderFilters(); renderGrid(); renderCtxLine(); renderInspector(); renderBar(); }
+function refresh(it) { dirty(); if (it) updateTile(it); renderFilters(); renderInspector(); renderBar(); }
 const selected = () => S.items.filter((x) => S.sel.has(x.id));
-const aiTargets = () => { const sel = selected(); return (sel.length > 1 ? sel : S.items.filter((x) => status(x) === "needs")).filter((x) => x.exState === "done" && !x.out); };
-const readyTargets = () => { const sel = selected(); return (sel.length > 1 ? sel : S.items).filter((x) => status(x) === "review"); };
+const aiTargets = () => { const sel = selected(); return (sel.length > 1 ? sel : S.items.filter((x) => stOf(x) === "needs")).filter((x) => x.exState === "done" && !x.out); };
+const readyTargets = () => { const sel = selected(); return (sel.length > 1 ? sel : S.items).filter((x) => stOf(x) === "review"); };
 
 /* ------------------------------------------------------------------ inspector */
 const toLocalInput = (t) => (t == null ? "" : human(t).replace(" ", "T"));
@@ -185,6 +210,7 @@ function renderInspector() {
   const nD = showAll.d ? dc.length : 3, nL = showAll.l ? lc.length : 3;
   const zoneTxt = p.t != null ? `${it.zone ? esc(it.zone) : esc(zoneLabel(p.zone))}${p.off != null ? " (UTC" + fmtOffset(p.off) + ")" : ""}${it.zone ? "" : d && d.off != null && !it.zone ? " from the source" : l || (ex.gps) ? " from the location" : " default"}` : "";
   el.innerHTML = `
+  <h2 class="sr-only">File details</h2>
   <div class="irow"><button class="ghost small back" id="i-back">&larr; Back</button><span class="badge st-${s}">${STATUS_LABEL[s]}</span><span class="rowx"><button class="ghost small" id="i-prev" ${idx <= 0 ? "disabled" : ""} aria-label="Previous">&larr;</button><button class="ghost small" id="i-next" ${idx < 0 || idx >= vis.length - 1 ? "disabled" : ""} aria-label="Next">&rarr;</button></span></div>
   <div style="margin-top:8px">${it.prevUrl ? `<img class="pv" src="${it.prevUrl}" alt="Preview of ${esc(it.name)}">` : `<div class="pvph">${it.prevErr ? esc(it.prevErr) : "Loading preview..."}</div>`}</div>
   <div class="fname" style="margin-top:8px">${esc(it.path)}</div>
@@ -207,7 +233,7 @@ function renderInspector() {
   ${lc.length > 3 ? `<button type="button" class="more" id="i-moreL">${showAll.l ? "Fewer" : "All " + lc.length + " suggestions"}</button>` : ""}
 
   <h3>Device</h3>
-  <select id="i-dev">${devOptions(it.dev || "era")}</select>
+  <select id="i-dev" aria-label="Device">${devOptions(it.dev || "era")}</select>
 
   ${w.length ? `<div class="warnbox">${w.map(esc).join("<br>")}</div>` : ""}
   <h3>Will be written</h3>
@@ -246,9 +272,10 @@ function focusItem(it, open = true) {
   if (!it) return;
   S.focus = it.id; S.sel = new Set([it.id]); showAll = { d: false, l: false };
   if (open) S.insOpen = true;
-  for (const x of S.items) updateTile(x);
+  paintSel();
   renderFilters(); renderInspector(); renderBar();
   const el = tiles.get(it.id); if (el && !mobile()) el.scrollIntoView({ block: "nearest" });
+  if (el && !open) el.focus({ preventScroll: true });
   if (!it.thumb && !it.prevErr) makeThumb(it).then(() => { updateTile(it); if (S.focus === it.id) renderInspector(); });
 }
 
@@ -261,9 +288,9 @@ function renderBulk(el, sel) {
   <div class="irow"><button class="ghost small back" id="b-back">&larr; Back</button><h2>${sel.length} selected</h2><button class="ghost small" id="b-clear">Clear selection</button></div>
   <div class="src">${Object.entries(by).map(([k, n]) => `${n} ${STATUS_LABEL[k].toLowerCase()}`).join(" . ")}</div>
   <div class="bulkgrid" style="margin-top:12px">
-   <div class="bulk"><h3 style="margin-top:0">Set date and time</h3><div class="rowx"><input type="datetime-local" step="1" id="b-dt"><button id="b-dt-go">Set for all</button></div>
+   <div class="bulk"><h3 style="margin-top:0">Set date and time</h3><div class="rowx"><input type="datetime-local" step="1" id="b-dt" aria-label="Date and time"><button id="b-dt-go">Set for all</button></div>
      <p class="note">Or spread across a period in file order:</p><div class="two"><input type="datetime-local" step="1" id="b-from" aria-label="From"><input type="datetime-local" step="1" id="b-to" aria-label="To"></div><button id="b-spread" style="margin-top:6px">Spread ${sel.length} files</button></div>
-   <div class="bulk"><h3 style="margin-top:0">Shift times</h3><p class="note">Fix a camera clock or time zone mistake on ${dated} dated file${dated === 1 ? "" : "s"}.</p><div class="rowx"><select id="b-sign" style="width:auto"><option value="1">Later by</option><option value="-1">Earlier by</option></select><input id="b-h" inputmode="numeric" placeholder="hours" style="width:90px"><input id="b-m" inputmode="numeric" placeholder="minutes" style="width:90px"><button id="b-shift">Shift</button></div></div>
+   <div class="bulk"><h3 style="margin-top:0">Shift times</h3><p class="note">Fix a camera clock or time zone mistake on ${dated} dated file${dated === 1 ? "" : "s"}.</p><div class="rowx"><select id="b-sign" aria-label="Direction" style="width:auto"><option value="1">Later by</option><option value="-1">Earlier by</option></select><input id="b-h" aria-label="Hours" inputmode="numeric" placeholder="hours" style="width:90px"><input id="b-m" aria-label="Minutes" inputmode="numeric" placeholder="minutes" style="width:90px"><button id="b-shift">Shift</button></div></div>
    <div class="bulk"><h3 style="margin-top:0">Location</h3><div class="rowx"><button id="b-map">Pick on map for all</button><button class="ghost" id="b-noloc">Remove location</button></div></div>
    <div class="bulk"><h3 style="margin-top:0">Time zone and device</h3><div class="two"><label>Time zone<input id="b-zone" list="zones" placeholder="Automatic"></label><label>Device<select id="b-dev">${devOptions("", true)}</select></label></div><button id="b-zd" style="margin-top:6px">Apply</button></div>
    <div class="bulk"><h3 style="margin-top:0">Suggestions</h3><div class="rowx"><button id="b-best">Use best suggestion</button><button id="b-ai2">AI suggest (${sel.length})</button></div><p class="note">Best suggestion takes the strongest evidence for each file, including AI results already received.</p></div>
@@ -272,7 +299,7 @@ function renderBulk(el, sel) {
   el.classList.toggle("open", mobile() && S.insOpen === true); document.body.classList.toggle("sheet", mobile() && S.insOpen === true);
   const apply = (fn, msg) => { let n = 0; for (const it of sel) if (fn(it) !== false) { rezone(it); it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; n++; } for (const it of sel) updateTile(it); refresh(); toast(msg(n)); };
   $("#b-back").onclick = () => { S.insOpen = false; el.classList.remove("open"); document.body.classList.remove("sheet"); };
-  $("#b-clear").onclick = () => { S.sel = new Set(S.focus ? [S.focus] : []); renderAll(); };
+  $("#b-clear").onclick = () => { S.sel = new Set(S.focus ? [S.focus] : []); selChanged(); };
   $("#b-dt-go").onclick = () => { const t = fromLocalInput($("#b-dt").value); if (t == null) return toast("Enter a date and time first."); apply((it) => { it.date = { t, off: null, src: "manual", label: "Entered by you", conf: 1, manual: true }; }, (n) => `Date set on ${plural(n, "file")}.`); };
   $("#b-spread").onclick = () => { const a = fromLocalInput($("#b-from").value), b = fromLocalInput($("#b-to").value); if (a == null || b == null || b < a) return toast("Enter a valid start and end."); const n = sel.length; apply((it) => { const i = sel.indexOf(it); const t = Math.round((a + (n > 1 ? ((b - a) * i) / (n - 1) : 0)) / 1000) * 1000; it.date = { t, off: null, src: "manual", label: "Spread by you", conf: 1, manual: true }; }, (k) => `Spread ${plural(k, "file")} in file order.`); };
   $("#b-shift").onclick = () => { const h = parseInt($("#b-h").value || "0", 10), m = parseInt($("#b-m").value || "0", 10); if (!(h || m) || isNaN(h) || isNaN(m)) return toast("Enter hours and/or minutes."); const dt = +$("#b-sign").value * (h * 60 + m) * 60000; apply((it) => { const base = it.date ? it.date.t : it.ex && it.ex.date && it.ex.date.t; if (base == null) return false; it.date = { t: base + dt, off: null, src: "manual", label: `Shifted ${dt > 0 ? "+" : "-"}${h}h${m ? m + "m" : ""}`, conf: 1, manual: true }; }, (n) => `Shifted ${plural(n, "file")}.`); };
@@ -300,13 +327,12 @@ $("#grid").addEventListener("click", (e) => {
     anchor = it.id; S.focus = it.id;
     if (!S.sel.size) S.sel.add(it.id);
   } else { anchor = it.id; focusItem(it); return; }
-  for (const x of S.items) updateTile(x);
-  renderFilters(); renderInspector(); renderBar();
+  selChanged();
 });
 $("#grid").addEventListener("keydown", (e) => { if (e.key === "Enter") { const t = e.target.closest(".tile"); if (t) { focusItem(byId(+t.dataset.id)); e.preventDefault(); } } });
 $("#sortby").onchange = (e) => { S.sort = e.target.value; renderAll(); };
 $("#filters").onclick = (e) => { const b = e.target.closest("[data-f]"); if (!b) return; S.filter = b.dataset.f; renderAll(); };
-$("#selall").onchange = (e) => { const vis = visible(); if (e.target.checked) vis.forEach((x) => S.sel.add(x.id)); else { S.sel = new Set(S.focus ? [S.focus] : []); } S.insOpen = e.target.checked && mobile(); renderAll(); };
+$("#selall").onchange = (e) => { const vis = visible(); if (e.target.checked) vis.forEach((x) => S.sel.add(x.id)); else { S.sel = new Set(S.focus ? [S.focus] : []); } S.insOpen = e.target.checked && mobile(); selChanged(); };
 $("#selmode").onclick = () => { S.selectMode = !S.selectMode; $("#selmode").setAttribute("aria-pressed", S.selectMode); $("#selmode").textContent = S.selectMode ? "Done selecting" : "Select"; if (!S.selectMode && S.sel.size > 1 && mobile()) { S.insOpen = true; } renderAll(); };
 
 /* ------------------------------------------------------------------ AI */
@@ -399,6 +425,7 @@ const fileOf = (o) => new File([o.bytes], o.name, { type: mime(o.name), lastModi
 function downloadBlob(blob, name) { const u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 120000); }
 function nowStamp() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 
+const fsName = (it) => (it.realExt ? it.name.replace(/\.[^.]*$/, "") + "." + it.realExt : it.name);
 async function exportReady() {
   const list = S.items.filter((x) => status(x) === "ready");
   if (!list.length) return openExport();
@@ -411,6 +438,7 @@ async function exportReady() {
     const p = plan(it);
     const b = buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, label: S.settings.label, write: p.write });
     let name = applyPattern(S.settings.pattern, { name: it.name, t: p.t, dev: it.dev }, { seq, place: (it.loc && it.loc.place) || (S.ctx.area && S.ctx.area.name) });
+    if (it.realExt) name = name.replace(/\.[^.]*$/, "") + "." + it.realExt;
     if (usesSeq(S.settings.pattern)) seq++;
     const stem = name.replace(/(\.[^.]*)?$/, ""), ext = (/\.[^.]+$/.exec(name) || [""])[0];
     let key = (it.dir ? it.dir + "/" : "") + name, k = 1;
@@ -423,9 +451,9 @@ async function exportReady() {
     const part = jobs.slice(i, i + 25);
     setStatus(`Writing and verifying ${done + 1}-${done + part.length} of ${jobs.length}...`);
     let written = new Map(), back = new Map();
-    try { written = await writeMany(part.map((j) => ({ id: j.it.id, blob: j.it.file, name: j.it.name, tags: j.b.tags }))); } catch (e) { for (const j of part) written.set(j.it.id, e); }
+    try { written = await writeMany(part.map((j) => ({ id: j.it.id, blob: j.it.file, name: fsName(j.it), tags: j.b.tags }))); } catch (e) { for (const j of part) written.set(j.it.id, e); }
     const okW = part.filter((j) => written.get(j.it.id) instanceof Uint8Array);
-    try { back = await readMany(okW.map((j) => ({ id: j.it.id, blob: new Blob([written.get(j.it.id)]), name: j.it.name }))); } catch (e) { for (const j of okW) back.set(j.it.id, e); }
+    try { back = await readMany(okW.map((j) => ({ id: j.it.id, blob: new Blob([written.get(j.it.id)]), name: fsName(j.it) }))); } catch (e) { for (const j of okW) back.set(j.it.id, e); }
     for (const j of part) {
       const w = written.get(j.it.id), r = back.get(j.it.id);
       if (!(w instanceof Uint8Array)) j.it.out = { ok: false, diffs: [(w && w.message) || "Write failed"], bytes: null, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
@@ -485,8 +513,8 @@ function openSettings(focus) {
   $("#settings-body").innerHTML = `
   <h3>Templates</h3>
   <p class="note">A template saves all of these settings plus your Trip details, so you can reuse them next time.</p>
-  <div class="rowx"><select id="s-tpl" style="flex:1 1 200px"><option value="">${tnames.length ? "Apply a saved template..." : "No saved templates yet"}</option>${tnames.map((n) => `<option>${esc(n)}</option>`).join("")}</select><button type="button" class="ghost danger" id="s-tdel" disabled>Delete</button></div>
-  <div class="rowx" style="margin-top:6px"><input id="s-tname" maxlength="40" placeholder="Name, e.g. Lisbon July 2021" style="flex:1 1 200px"><button type="button" id="s-tsave">Save current</button></div>
+  <div class="rowx"><select id="s-tpl" aria-label="Saved templates" style="flex:1 1 200px"><option value="">${tnames.length ? "Apply a saved template..." : "No saved templates yet"}</option>${tnames.map((n) => `<option>${esc(n)}</option>`).join("")}</select><button type="button" class="ghost danger" id="s-tdel" disabled>Delete</button></div>
+  <div class="rowx" style="margin-top:6px"><input id="s-tname" aria-label="Template name" maxlength="40" placeholder="Name, e.g. Lisbon July 2021" style="flex:1 1 200px"><button type="button" id="s-tsave">Save current</button></div>
   <div class="rowx" style="margin-top:6px"><button type="button" class="ghost" id="s-last" ${store.lastUsed ? "" : "disabled"}>Use last used settings</button><span class="note">${acct.user ? "Saved to your account, on every device." : "Saved in this browser." + (acct.configured ? " Sign in to keep them on every device." : "")}</span></div>
   <div class="sect"><h3>Time and writing</h3>
   <label>Default time zone (used when a file has no location or offset)<input id="s-zone" list="zones" value="${esc(st.zone)}"></label>
@@ -504,7 +532,7 @@ function openSettings(focus) {
   <label>Delivery<select id="s-deliv"><option value="auto" ${st.delivery === "auto" ? "selected" : ""}>Separate files; ZIP when files came from several folders</option><option value="zip" ${st.delivery === "zip" ? "selected" : ""}>Always offer a ZIP first</option></select></label></div>
   <div class="sect" id="s-ai-sect"><h3>AI suggestions</h3>
   <p class="note">${acct.configured ? "AI suggestions use credits from your account." : "AI suggestions through an account are coming soon."} Advanced: use your own Anthropic API key instead. It stays in this browser and images go straight to Anthropic.</p>
-  <div class="rowx"><input type="password" id="s-key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-..."}" autocomplete="off" style="flex:1 1 200px"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
+  <div class="rowx"><input type="password" id="s-key" aria-label="Anthropic API key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-..."}" autocomplete="off" style="flex:1 1 200px"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
   <label class="chk"><input type="checkbox" id="s-keyrem"> Remember the key on this device</label></div>`;
   const d = $("#dlg-settings"); if (!d.open) d.showModal();
   if (focus === "ai") setTimeout(() => $("#s-ai-sect").scrollIntoView({ block: "start" }), 50);
@@ -604,11 +632,11 @@ addEventListener("keydown", (e) => {
   const vis = visible(), it = byId(S.focus), i = it ? vis.indexOf(it) : -1;
   if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); focusItem(vis[Math.min(vis.length - 1, i + 1)] || vis[0], false); }
   else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); focusItem(vis[Math.max(0, i - 1)] || vis[0], false); }
-  else if ((e.key === "a" || e.key === "A") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); vis.forEach((x) => S.sel.add(x.id)); renderAll(); }
+  else if ((e.key === "a" || e.key === "A") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); vis.forEach((x) => S.sel.add(x.id)); selChanged(); }
   else if (e.key === "a" && it && status(it) === "review") { it.ready = true; refresh(it); const nx = vis.find((x, j) => j > i && status(x) === "review"); if (nx) focusItem(nx, false); }
-  else if (e.key === "s" && it) runAI(S.sel.size > 1 ? selected() : [it]);
-  else if (e.key === " " && it) { e.preventDefault(); if (S.sel.has(it.id) && S.sel.size > 1) S.sel.delete(it.id); else S.sel.add(it.id); renderAll(); }
-  else if (e.key === "Escape") { S.sel = new Set(S.focus ? [S.focus] : []); S.selectMode = false; renderAll(); }
+  else if (e.key === "s" && it) runAI([it]);
+  else if (e.key === " " && it) { e.preventDefault(); if (S.sel.has(it.id) && S.sel.size > 1) S.sel.delete(it.id); else S.sel.add(it.id); selChanged(); }
+  else if (e.key === "Escape") { S.sel = new Set(S.focus ? [S.focus] : []); S.selectMode = false; $("#selmode").setAttribute("aria-pressed", "false"); $("#selmode").textContent = "Select"; selChanged(); }
   else if (e.key === "?") $("#dlg-help").showModal();
 });
 addEventListener("beforeunload", (e) => { if (S.items.some((x) => x.ready || (x.out && x.out.ok)) ) { e.preventDefault(); e.returnValue = ""; } });
@@ -622,7 +650,8 @@ onEngine((en) => {
   c.title = en.state === "error" ? String(en.error && en.error.message) : "ExifTool running in your browser";
   if (en.state === "error") toast("The metadata engine couldn't load. Check your connection and reload.", 8000);
 });
-onAccount(async () => { renderAccountBtn(); if (acct.user && !acct.synced) { acct.synced = true; await store.syncFromCloud(); } if ($("#dlg-account").open && acct.user) openAccount("account"); renderInspector(); });
+let lastUid = null;
+onAccount(async () => { renderAccountBtn(); const uid = acct.user ? acct.user.id : null; if (uid !== lastUid) { lastUid = uid; acct.synced = false; } if (acct.user && !acct.synced) { acct.synced = true; await store.syncFromCloud(); } if ($("#dlg-account").open && acct.user) openAccount("account"); renderInspector(); });
 renderPlans(); renderAccountBtn();
 initAccount().catch(() => {});
 const qs = new URLSearchParams(location.search);

@@ -56,6 +56,24 @@ export function interpretExisting(r, kind, now = Date.now()) {
   }
   const make = r["IFD0:Make"] || r["Keys:Make"] || r["UserData:Make"] || null;
   const model = r["IFD0:Model"] || r["Keys:Model"] || r["UserData:Model"] || null;
-  return { date, gps, device: make || model ? { make, model } : null };
+  const issue = damage(r, kind);
+  return { date, gps, device: make || model ? { make, model } : null, issue, fileExt: r["File:FileTypeExtension"] ? String(r["File:FileTypeExtension"]).toLowerCase() : null };
 }
-export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-ExifIFD:LensModel", "-XMP:all", "-IPTC:all", "-Composite:DateTimeCreated", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize"];
+const FAMILY = { jpg: "jpeg", jpeg: "jpeg", jpe: "jpeg", png: "png", tif: "tiff", tiff: "tiff", heic: "heic", heif: "heic", webp: "webp", avif: "avif", mov: "qt", qt: "qt", mp4: "qt", m4v: "qt", "3gp": "qt", "3g2": "qt" };
+/** The file's real extension when it differs from what the name claims (e.g. a PNG saved as .jpg), else null. */
+export function realExt(fileExt, name) {
+  const e = String(fileExt || "").toLowerCase(), claimed = String(name || "").toLowerCase().replace(/^.*\./, "");
+  if (!e || !name || !FAMILY[e] || !FAMILY[claimed] || FAMILY[e] === FAMILY[claimed]) return null;
+  return e === "jpeg" ? "jpg" : e;
+}
+/** A short human message when ExifTool says the file is damaged or unreadable, else null. */
+function damage(r, kind) {
+  const e = String(r["ExifTool:Error"] || "").trim(), w = String(r["ExifTool:Warning"] || "").trim();
+  if (e) return "ExifTool could not read this file properly: " + e.slice(0, 160);
+  const fe = String(r["File:FileTypeExtension"] || "").toLowerCase();
+  if (fe && !FAMILY[fe] && fe !== "dng") return `This file isn't a ${kind} (its contents look like ${fe.toUpperCase()}).`;
+  if (kind === "photo" && r["File:ImageWidth"] == null && r["File:FileType"] == null && r["Composite:ImageSize"] == null) return "No picture data could be read: the file may be damaged or not an image.";
+  if (/truncated|corrupt|bad |invalid|unexpected|end of file|not a valid/i.test(w)) return "The file looks damaged (" + w.slice(0, 140) + "). Metadata can still be written, but check the result opens correctly.";
+  return null;
+}
+export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-ExifIFD:LensModel", "-XMP:all", "-IPTC:all", "-Composite:DateTimeCreated", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize", "-File:FileType", "-File:FileTypeExtension", "-ExifTool:Warning", "-ExifTool:Error"];

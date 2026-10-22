@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "scripts": {
     "build": "node build.mjs",
-    "test": "python3 tests/run.py"
+    "test": "node tests/run.mjs"
   },
   "devDependencies": {
     "esbuild": "0.24.0"

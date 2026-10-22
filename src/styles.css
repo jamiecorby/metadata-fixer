@@ -8,6 +8,7 @@
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{--bg:#0e1514;--panel:#151f1e;--ink:#e3ecea;--mut:#93a6a3;--line:#283634;--soft:#123230;--acc:#2dd4bf;--acc2:#5eead4;--acc-ink:#042f2c;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--info:#93c5fd;--st-needs:#fbbf24;--st-review:#93c5fd;--st-ready:#2dd4bf;--st-done:#4ade80;--st-failed:#f87171;--st-ok:#94a3b8;--st-loading:#64748b;color-scheme:dark}}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);-webkit-text-size-adjust:100%;min-height:100vh;display:flex;flex-direction:column}
@@ -63,7 +64,7 @@ label>input,label>select{margin-top:4px;color:var(--ink);font-size:15px}
 .how{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:40px}
 .how>div{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
 .how .n{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--soft);color:var(--acc);font-weight:700;margin-bottom:8px}
-.how h3{font-size:16px;margin-bottom:4px}.how p{margin:0;color:var(--mut);font-size:14px}
+.how h2{font-size:16px;margin:0 0 4px}.how p{margin:0;color:var(--mut);font-size:14px}
 .pricing,.faq{margin-top:44px}.pricing h2,.faq h2{font-size:24px;margin-bottom:14px}
 .plans{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .plan{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:6px}
@@ -88,7 +89,7 @@ label>input,label>select{margin-top:4px;color:var(--ink);font-size:15px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .tile{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none;content-visibility:auto;contain-intrinsic-size:auto 200px}
 .tile .th{aspect-ratio:4/3;width:100%;object-fit:cover;display:block;background:var(--line)}
-.tile .ph{aspect-ratio:4/3;display:grid;place-items:center;color:var(--mut);font-size:12px;background:var(--line)}
+.tile .ph{aspect-ratio:4/3;display:grid;place-items:center;color:var(--ink);font-size:12px;background:var(--line)}
 .tile .meta{padding:7px 9px 8px}
 .tile .nm{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .ds{font:12px var(--mono);color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

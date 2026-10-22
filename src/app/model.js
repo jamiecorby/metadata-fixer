@@ -185,6 +185,8 @@ export function warnings(it) {
   const pr = profileFor(it.dev, p.t);
   if (pr && it.dev !== "era" && p.t != null && pr.released > p.t) w.push(`${pr.model} was released after this date.`);
   if (p.write.date && p.off == null) w.push("No time zone known: the date will be written without an offset.");
+  if (it.ex && it.ex.issue) w.push(it.ex.issue);
+  if (it.realExt) w.push(`This file is really a ${it.realExt.toUpperCase()} but is named .${it.name.replace(/^.*\./, "").toLowerCase()}. It will be saved as .${it.realExt}.`);
   if (it.date && it.date.src === "mtime") w.push("File modified time is usually the copy date, not the capture date.");
   return w;
 }

@@ -22,8 +22,6 @@ Live: https://jamiecorby.github.io/metadata-fixer/
 ```
 npm install
 npm run build        # bundles src/ -> assets/, copies the engine to w/, writes index.html
-node tests/core.test.mjs
-python3 tests/e2e.py # browser tests with real files and read-back verification
-python3 tests/perf.py
+npm test             # unit, engine, damaged-file, browser end-to-end and map suites (BASE=<url> tests a live site; PERF=1 adds the 200-file run)
 ```
 Source lives in `src/`; `index.html`, `assets/`, `w/` and the legal pages at the root are build output served by GitHub Pages.

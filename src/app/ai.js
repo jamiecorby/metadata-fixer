@@ -28,10 +28,16 @@ export async function suggest(imageBlob, ctx) {
   return cleanAnswer((j.content || []).filter((c) => c.type === "text").map((c) => c.text).join(""));
 }
 /** Place search (OpenStreetMap Nominatim). Called only on an explicit search, per the Nominatim usage policy. */
+// Nominatim allows about one request a second; rate-limited replies carry no CORS headers, so they surface as network errors.
+let lastNom = 0;
+async function nominatimGate() { const wait = 1100 - (Date.now() - lastNom); if (wait > 0) await new Promise((r) => setTimeout(r, wait)); lastNom = Date.now(); }
 export async function geocode(q) {
-  const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=en&q=" + encodeURIComponent(q));
-  if (!r.ok) throw new Error("Place search failed");
-  const j = await r.json();
+  let j = null, last = null;
+  for (let attempt = 0; attempt < 3 && !j; attempt++) {
+    await nominatimGate();
+    try { const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=en&q=" + encodeURIComponent(q)); if (!r.ok) throw new Error("Place search failed (" + r.status + ")"); j = await r.json(); } catch (e) { last = e; }
+  }
+  if (!j) throw last || new Error("Place search failed");
   return j.map((p) => {
     const la = +p.lat, lo = +p.lon, bb = (p.boundingbox || []).map(Number);
     let rad = 5;
@@ -39,8 +45,7 @@ export async function geocode(q) {
     return { name: String(p.display_name || "").split(", ").filter((x, i, a) => i < 2 || i === a.length - 1).join(", "), la, lo, r: rad };
   });
 }
-let lastRev = 0;
 export async function reverseName(la, lo) {
-  const wait = 1100 - (Date.now() - lastRev); if (wait > 0) await new Promise((r) => setTimeout(r, wait)); lastRev = Date.now();
+  await nominatimGate();
   try { const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&accept-language=en&lat=${la}&lon=${lo}`); const j = await r.json(); const a = j.address || {}; return [a.city || a.town || a.village || a.municipality || a.county, a.state, a.country].filter(Boolean).join(", ") || null; } catch (e) { return null; }
 }

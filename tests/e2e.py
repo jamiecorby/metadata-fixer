@@ -24,12 +24,12 @@ async def st(pg, name):
 
 def human(ms):
     import datetime
-    return datetime.datetime.utcfromtimestamp(ms / 1000).strftime("%Y-%m-%d %H:%M:%S") if ms is not None else None
+    return datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if ms is not None else None
 
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch()
-        ctx = await b.new_context(viewport={"width": 1366, "height": 860}, timezone_id="America/Denver", accept_downloads=True)
+        ctx = await b.new_context(bypass_csp=True, viewport={"width": 1366, "height": 860}, timezone_id="America/Denver", accept_downloads=True)
         pg = await ctx.new_page()
         errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)))
@@ -106,7 +106,7 @@ async def main():
         await pg.screenshot(path=f"{OUT}/desk_export.png")
         await pg.keyboard.press("Escape")
         # mobile layout
-        m = await b.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, timezone_id="Europe/London")
+        m = await b.new_context(bypass_csp=True, viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, timezone_id="Europe/London")
         mp = await m.new_page(); mp.on("pageerror", lambda e: errs.append("mobile: " + str(e)))
         await mp.goto(BASE); await mp.screenshot(path=f"{OUT}/m_landing.png", full_page=True)
         ov = await mp.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"); check("mobile landing no h-scroll", ov <= 0, ov)
@@ -119,7 +119,7 @@ async def main():
         await mp.screenshot(path=f"{OUT}/m_inspector.png")
         await mp.click("#i-back"); await mp.wait_for_timeout(300)
         check("mobile inspector closes", not await mp.evaluate("document.querySelector('#insp').classList.contains('open')"))
-        dk = await b.new_context(viewport={"width": 1366, "height": 860}, color_scheme="dark"); dp = await dk.new_page(); await dp.goto(BASE); await dp.screenshot(path=f"{OUT}/dark_landing.png")
+        dk = await b.new_context(bypass_csp=True, viewport={"width": 1366, "height": 860}, color_scheme="dark"); dp = await dk.new_page(); await dp.goto(BASE); await dp.screenshot(path=f"{OUT}/dark_landing.png")
         check("no page errors", not errs, errs)
         await b.close()
     print(f"\n{'ALL PASSED' if not fails else str(len(fails)) + ' FAILED: ' + ', '.join(fails)}")
