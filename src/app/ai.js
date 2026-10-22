@@ -2,6 +2,7 @@
 import { buildPrompt, cleanAnswer } from "../core/prompt.js";
 import { buildAuthPrompt, cleanVision } from "../core/authprompt.js";
 import { acct, callFn } from "./account.js";
+import { callOwnKey } from "./llm.js";
 const KEY = "mf2.apikey";
 export const ownKey = { get: () => { try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) || ""; } catch (e) { return ""; } }, set: (v, remember) => { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); if (v) (remember ? localStorage : sessionStorage).setItem(KEY, v); } catch (e) {} } };
 export const aiMode = () => (ownKey.get() ? "own" : acct.configured ? "account" : "none");
@@ -17,16 +18,7 @@ export async function suggest(imageBlob, ctx) {
     const j = await callFn("suggest", { image, ctx });
     return cleanAnswer(j.answer);
   }
-  let r;
-  try {
-    r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": ownKey.get(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 1200, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } }, { type: "text", text: buildPrompt(ctx) }] }] }) });
-  } catch (e) { throw Object.assign(new Error("Could not reach the Anthropic API."), { code: "network" }); }
-  if (r.status === 401 || r.status === 403) throw Object.assign(new Error("Your API key was rejected. Check it in Settings."), { code: "bad_key" });
-  if (r.status === 429 || r.status === 529) throw Object.assign(new Error("The AI is busy. Wait a moment and try again."), { code: "rate_limited" });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || "AI error " + r.status), { code: "api" });
-  return cleanAnswer((j.content || []).filter((c) => c.type === "text").map((c) => c.text).join(""));
+  return cleanAnswer(await callOwnKey(ownKey.get(), { image, prompt: buildPrompt(ctx), maxTokens: 1200 }));
 }
 /** Optional visual authenticity check on a small metadata-free copy. Costs one AI credit in account mode. Returns {score, confidence, cues}. */
 export async function authVision(imageBlob) {
@@ -38,16 +30,8 @@ export async function authVision(imageBlob) {
     const j = await callFn("authenticity", { image });
     return j.answer;
   }
-  let r;
-  try {
-    r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": ownKey.get(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 500, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } }, { type: "text", text: buildAuthPrompt() }] }] }) });
-  } catch (e) { throw Object.assign(new Error("Could not reach the Anthropic API."), { code: "network" }); }
-  if (r.status === 401 || r.status === 403) throw Object.assign(new Error("Your API key was rejected. Check it in Settings."), { code: "bad_key" });
-  if (r.status === 429 || r.status === 529) throw Object.assign(new Error("The AI is busy. Wait a moment and try again."), { code: "rate_limited" });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || "AI error " + r.status), { code: "api" });
-  try { return cleanVision((j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("")); } catch (e) { throw Object.assign(new Error("The AI couldn't give a usable answer for this image."), { code: "unparseable" }); }
+  const text = await callOwnKey(ownKey.get(), { image, prompt: buildAuthPrompt(), maxTokens: 500 });
+  try { return cleanVision(text); } catch (e) { throw Object.assign(new Error("The AI couldn't give a usable answer for this image."), { code: "unparseable" }); }
 }
 /** Place search (OpenStreetMap Nominatim). Called only on an explicit search, per the Nominatim usage policy. */
 // Nominatim allows about one request a second; rate-limited replies carry no CORS headers, so they surface as network errors.

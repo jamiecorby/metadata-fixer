@@ -9,6 +9,7 @@ BASE = os.environ.get("BASE", "http://127.0.0.1:8774/index.html")
 FX = ROOT + "/tests/fixtures/auth/"
 AXE = open(ROOT + "/node_modules/axe-core/axe.min.js").read()
 NAMES = ["genuine_iphone.jpg", "ai_firefly.jpg", "tampered_device_date.jpg", "tampered_fake_camera_on_ai.jpg", "edited_generative_fill.jpg", "c2pa_capture.jpg", "ai_c2pa_openai.jpg"]
+VISJ = {"score": 82, "confidence": 0.6, "cues": [{"cue": "Garbled text", "detail": "x"}]}
 VIS = {"content": [{"type": "text", "text": json.dumps({"score": 82, "confidence": 0.6, "cues": [{"cue": "Garbled text", "detail": "sign lettering is nonsense"}]})}]}
 fails = []; csp = []
 def check(name, ok, info=""):
@@ -94,6 +95,29 @@ async def main():
         await pg.evaluate("window.__mf.S.items.forEach(x=>{ if(!x.date){x.date={t:Date.UTC(2020,0,2,3,4,5),off:null,src:'manual',label:'t',conf:1,manual:true}} }); window.__mf.renderAll()")
         await pg.click("#b-export"); await pg.wait_for_selector("#dlg-export[open]", timeout=120000)
         check("'only when flagged' skips the dialog for clean files", not await pg.evaluate("document.querySelector('#dlg-auth').open"))
+        # Gemini own key: same flows, different provider, still no CSP violations
+        ctx = await b.new_context(viewport={"width": 1280, "height": 900}); pg = await ctx.new_page()
+        pg.on("console", lambda m: csp.append(m.text) if (("Content Security Policy" in m.text or "Refused to" in m.text) and "fonts.googleapis.com/css2" not in m.text) else None)
+        gem = []
+        SUG = {"dates": [{"start": "2019-07-04", "end": "2019-07-04", "time": "16:00", "confidence": 0.7, "basis": "light"}], "locations": [], "scene": "street"}
+        async def gh(route):
+            req = route.request; body = json.loads(req.post_data); txt = json.dumps(VISJ if "image forensics" in body["contents"][0]["parts"][0]["text"] else SUG)
+            gem.append((req.url, req.headers.get("x-goog-api-key"), body))
+            await route.fulfill(status=200, content_type="application/json", body=json.dumps({"candidates": [{"content": {"parts": [{"text": txt}]}}]}), headers={"access-control-allow-origin": "*"})
+        await pg.route("https://generativelanguage.googleapis.com/**", gh)
+        await pg.goto(BASE); await pg.set_input_files("#pick", [FX + "ai_firefly.jpg", FX + "tampered_device_date.jpg"])
+        await until(pg, "window.__mf.S.items.length==2 && window.__mf.S.items.every(x=>x.exState==='done')")
+        await pg.click("#btn-settings"); await pg.fill("#s-key", "AIzaSyTESTKEYTESTKEYTESTKEY1234567"); await pg.click("#s-keysave")
+        check("a Gemini key is accepted", "Gemini" in (await pg.inner_text("#toast")), await pg.inner_text("#toast")); await pg.keyboard.press("Escape")
+        await pg.click("#b-export"); await pg.wait_for_selector("#dlg-auth[open]")
+        await pg.click("#au-vis"); await until(pg, "/Visual check: \\d+ done/.test(document.querySelector('#au-msg').textContent)", 60)
+        check("Gemini visual check call made with the key in a header, not the URL", gem and all("AIza" not in u and k == "AIzaSyTESTKEYTESTKEYTESTKEY1234567" for u, k, _ in gem), [(u, k) for u, k, _ in gem])
+        check("Gemini request carries inline image and JSON mode", all(b2["contents"][0]["parts"][1]["inline_data"]["data"] and b2["generationConfig"]["responseMimeType"] == "application/json" for _, _, b2 in gem))
+        check("Gemini visual evidence appears in the dialog", "Visual check" in await pg.inner_text("#auth-body"))
+        await pg.keyboard.press("Escape"); await pg.click("#grid .tile >> nth=0"); await pg.click("#i-ai")
+        await until(pg, "window.__mf.S.items.some(x=>x.ai)", 60)
+        check("Gemini date suggestion parsed by the existing code", await pg.evaluate("window.__mf.S.items.some(x=>x.ai&&x.ai.dates&&x.ai.dates.length)"))
+        await ctx.close()
         await b.close()
 asyncio.run(main())
 check("no CSP violations or page errors", not csp, csp)

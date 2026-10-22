@@ -12,6 +12,7 @@ import { BUILTIN, applyPattern, usesSeq } from "./core/naming.js";
 import { engine, onEngine, loadEngine, readTags, writeTags, readMany, writeMany } from "./app/engine.js";
 import { makeThumb, aiImage } from "./app/media.js";
 import { suggest, authVision, aiMode, ownKey } from "./app/ai.js";
+import { keyProvider, validKey } from "./app/llm.js";
 import { runAssess, fixFor, previewFix, mergeFix, verifyFix, auditCols, AUDIT_HEAD, meterLabel, tone as auTone } from "./app/authflow.js";
 import { acct, onAccount, initAccount, signIn, signOut, buy, refreshCredits } from "./app/account.js";
 import * as store from "./app/store.js";
@@ -609,8 +610,8 @@ function openSettings(focus) {
   <label>Authenticity check<select id="s-auth"><option value="always" ${st.authMode !== "flagged" ? "selected" : ""}>Show before every export</option><option value="flagged" ${st.authMode === "flagged" ? "selected" : ""}>Only when a file is flagged</option></select></label>
   <label>Delivery<select id="s-deliv"><option value="auto" ${st.delivery === "auto" ? "selected" : ""}>Separate files; ZIP when files came from several folders</option><option value="zip" ${st.delivery === "zip" ? "selected" : ""}>Always offer a ZIP first</option></select></label></div>
   <div class="sect" id="s-ai-sect"><h3>AI suggestions</h3>
-  <p class="note">${acct.configured ? "AI suggestions use credits from your account." : "AI suggestions through an account are coming soon."} Advanced: use your own Anthropic API key instead. It stays in this browser and images go straight to Anthropic.</p>
-  <div class="rowx"><input type="password" id="s-key" aria-label="Anthropic API key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-..."}" autocomplete="off" style="flex:1 1 200px"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
+  <p class="note">${acct.configured ? "AI suggestions use credits from your account." : "AI suggestions through an account are coming soon."} Advanced: use your own Anthropic or Google Gemini API key instead. It stays in this browser and images go straight to that provider.</p>
+  <div class="rowx"><input type="password" id="s-key" aria-label="Anthropic or Gemini API key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-... or AIza..."}" autocomplete="off" style="flex:1 1 200px"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
   <label class="chk"><input type="checkbox" id="s-keyrem"> Remember the key on this device</label></div>`;
   const d = $("#dlg-settings"); if (!d.open) d.showModal();
   if (focus === "ai") setTimeout(() => $("#s-ai-sect").scrollIntoView({ block: "start" }), 50);
@@ -629,7 +630,7 @@ function openSettings(focus) {
   $("#s-tsave").onclick = async () => { const n = $("#s-tname").value.trim().slice(0, 40); if (!n) { $("#s-tname").focus(); return toast("Type a name for the template."); } const existed = n in store.templates; const ok = await store.saveTemplate(n, snapshot()); toast(`${existed ? "Updated" : "Saved"} template "${n}"${ok === false ? " in this browser (account sync failed)" : ""}.`); openSettings(); $("#s-tpl").value = n; $("#s-tname").value = n; $("#s-tdel").disabled = false; };
   $("#s-tdel").onclick = async () => { const n = $("#s-tpl").value; if (!n) return; if (delArm !== n) { delArm = n; $("#s-tdel").textContent = "Tap again to delete"; setTimeout(() => { if (delArm === n) { delArm = null; const b = $("#s-tdel"); if (b) b.textContent = "Delete"; } }, 4000); return; } delArm = null; await store.deleteTemplate(n); toast(`Deleted "${n}".`); openSettings(); };
   $("#s-last").onclick = () => { applySnapshot(store.lastUsed); toast("Restored your last used settings."); openSettings(); };
-  $("#s-keysave").onclick = () => { const v = $("#s-key").value.trim(); if (!/^sk-/.test(v)) return toast("That doesn't look like an Anthropic API key."); ownKey.set(v, $("#s-keyrem").checked); toast("Key saved. AI suggestions now use your key."); openSettings("ai"); renderInspector(); };
+  $("#s-keysave").onclick = () => { const v = $("#s-key").value.trim(); if (!validKey(v)) return toast("That doesn't look like an Anthropic (sk-...) or Gemini (AIza...) API key."); ownKey.set(v, $("#s-keyrem").checked); toast(`Key saved. AI features now use your ${keyProvider(v) === "gemini" ? "Gemini" : "Anthropic"} key.`); openSettings("ai"); renderInspector(); };
   const kc = $("#s-keyclr"); if (kc) kc.onclick = () => { ownKey.set(""); toast("Key removed."); openSettings("ai"); renderInspector(); };
 }
 function applySnapshot(snap) {
