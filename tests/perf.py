@@ -17,7 +17,7 @@ async def main():
       let t=performance.now(); tiles[5].click(); await raf(); out.click=performance.now()-t;
       t=performance.now(); document.querySelector('#selall').click(); await raf(); out.selectall=performance.now()-t; tiles[5].click(); await raf(); return out}""")
     print("interaction latency ms",{k:round(v) for k,v in lat.items()}); assert lat["click"]<80 and lat["selectall"]<150, lat
-    await pg.click("#b-ready"); t2=time.time(); await pg.click("#b-export")
+    await pg.click("#b-ready"); t2=time.time(); await pg.click("#b-export"); await pg.wait_for_selector("#dlg-auth[open]", timeout=120000); await pg.click("#au-go")
     await pg.wait_for_selector("#dlg-export[open]",timeout=900000); t3=time.time()
     print(f"write+verify 200: {t3-t2:.1f}s", await pg.inner_text("#export-body .sumline"))
     mem=await pg.evaluate("performance.memory ? Math.round(performance.memory.usedJSHeapSize/1048576) : -1"); print("heap MB", mem, "errors", errs)

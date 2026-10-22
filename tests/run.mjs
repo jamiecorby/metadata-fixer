@@ -5,9 +5,11 @@ const suites = [
   ["unit: model", "node", ["tests/model.test.mjs"]],
   ["engine: batch", "node", ["tests/batch.test.mjs"]],
   ["engine: damaged files", "node", ["tests/damaged.test.mjs"]],
+  ["engine: authenticity", "node", ["tests/authenticity.test.mjs"]],
   ["browser: end to end", "python3", ["-W", "ignore", "tests/e2e.py"]],
   ["browser: damaged files", "python3", ["-W", "ignore", "tests/damaged.py"]],
   ["browser: map", "python3", ["-W", "ignore", "tests/map.py"]],
+  ["browser: authenticity check", "python3", ["-W", "ignore", "tests/auth.py"]],
   ["browser: content security policy", "python3", ["-W", "ignore", "tests/csp.py"]],
 ];
 if (process.env.PERF) suites.push(["browser: 200-file performance", "python3", ["-W", "ignore", "tests/perf.py"]]);

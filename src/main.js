@@ -11,7 +11,8 @@ import { IPHONES, profileFor } from "./core/devices.js";
 import { BUILTIN, applyPattern, usesSeq } from "./core/naming.js";
 import { engine, onEngine, loadEngine, readTags, writeTags, readMany, writeMany } from "./app/engine.js";
 import { makeThumb, aiImage } from "./app/media.js";
-import { suggest, aiMode, ownKey } from "./app/ai.js";
+import { suggest, authVision, aiMode, ownKey } from "./app/ai.js";
+import { runAssess, fixFor, previewFix, mergeFix, verifyFix, auditCols, AUDIT_HEAD, meterLabel, tone as auTone } from "./app/authflow.js";
 import { acct, onAccount, initAccount, signIn, signOut, buy, refreshCredits } from "./app/account.js";
 import * as store from "./app/store.js";
 import { pickLocation } from "./app/map.js";
@@ -170,7 +171,7 @@ function renderBar() {
   const aiT = aiTargets(), rdT = readyTargets();
   $("#b-ai").textContent = `AI suggest${aiT.length ? " (" + aiT.length + ")" : ""}`; $("#b-ai").disabled = !aiT.length;
   $("#b-ready").textContent = `Mark ready${rdT.length ? " (" + rdT.length + ")" : ""}`; $("#b-ready").disabled = !rdT.length;
-  $("#b-export").textContent = `Export${c.ready ? " (" + c.ready + ")" : ""}`; $("#b-export").disabled = !c.ready;
+  $("#b-export").textContent = c.ready ? `Export (${c.ready})` : "Check authenticity"; $("#b-export").disabled = !c.ready && !S.items.some((x) => !x.out && x.exState === "done");
   const loading = S.items.filter((x) => x.exState === "pending").length;
   setStatus(loading ? `Reading metadata... ${S.items.length - loading} of ${S.items.length}` : `${plural(S.items.length, "file")} . ${c.needs} need info . ${c.review} to review . ${c.ready} ready${sel.length > 1 ? ` . <b>${sel.length} selected</b>` : ""}`);
 }
@@ -426,8 +427,9 @@ function downloadBlob(blob, name) { const u = URL.createObjectURL(blob), a = doc
 function nowStamp() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 
 const fsName = (it) => (it.realExt ? it.name.replace(/\.[^.]*$/, "") + "." + it.realExt : it.name);
+const exportList = () => S.items.filter((x) => !x.out && x.exState === "done" && (status(x) === "ready" || fixFor(x)));
 async function exportReady() {
-  const list = S.items.filter((x) => status(x) === "ready");
+  const list = exportList();
   if (!list.length) return openExport();
   store.saveLast(snapshot());
   S.busy = true; $("#prog").hidden = false; $("#prog").max = list.length; $("#prog").value = 0; $("#b-export").disabled = true;
@@ -436,7 +438,8 @@ async function exportReady() {
   const jobs = [];
   for (const it of list) {
     const p = plan(it);
-    const b = buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, label: S.settings.label, write: p.write });
+    const fix = fixFor(it);
+    const b = mergeFix(buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, label: S.settings.label, write: p.write }), p, fix);
     let name = applyPattern(S.settings.pattern, { name: it.name, t: p.t, dev: it.dev }, { seq, place: (it.loc && it.loc.place) || (S.ctx.area && S.ctx.area.name) });
     if (it.realExt) name = name.replace(/\.[^.]*$/, "") + "." + it.realExt;
     if (usesSeq(S.settings.pattern)) seq++;
@@ -444,7 +447,7 @@ async function exportReady() {
     let key = (it.dir ? it.dir + "/" : "") + name, k = 1;
     while (used.has(key.toLowerCase())) { k++; name = `${stem}_${k}${ext}`; key = (it.dir ? it.dir + "/" : "") + name; }
     used.add(key.toLowerCase());
-    jobs.push({ it, p, b, name, key, mt: p.t != null ? p.t - (p.off || 0) * 60000 : Date.now() });
+    jobs.push({ it, p, b, fix, name, key, mt: p.t != null ? p.t - (p.off || 0) * 60000 : Date.now() });
   }
   let done = 0;
   for (let i = 0; i < jobs.length; i += 25) {
@@ -458,7 +461,7 @@ async function exportReady() {
       const w = written.get(j.it.id), r = back.get(j.it.id);
       if (!(w instanceof Uint8Array)) j.it.out = { ok: false, diffs: [(w && w.message) || "Write failed"], bytes: null, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
       else if (!r || r instanceof Error) j.it.out = { ok: false, diffs: ["Could not read the written file back: " + ((r && r.message) || "unknown")], bytes: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
-      else { const v = verify(r, j.b.expect); j.it.out = { ok: v.ok, diffs: v.diffs, bytes: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p }; }
+      else { const v = verify(r, j.b.expect), extra = await verifyFix(j.it, j.fix, r, new Blob([w])); j.it.out = { ok: v.ok && !extra.length, diffs: [...v.diffs, ...extra], bytes: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p, fix: j.fix }; }
       j.it.ready = false; updateTile(j.it);
     }
     done += part.length; $("#prog").value = done;
@@ -467,10 +470,10 @@ async function exportReady() {
   openExport();
 }
 function auditCsv() {
-  const rows = [["original_file", "output_file", "type", "verified", "date_before", "date_after", "utc_offset", "time_zone", "date_source", "date_confidence", "lat_before", "lon_before", "lat_after", "lon_after", "location_source", "place", "device_after", "notes"]];
+  const rows = [["original_file", "output_file", "type", "verified", "date_before", "date_after", "utc_offset", "time_zone", "date_source", "date_confidence", "lat_before", "lon_before", "lat_after", "lon_after", "location_source", "place", "device_after", ...AUDIT_HEAD, "notes"]];
   for (const it of S.items) if (it.out) {
     const ex = it.ex || {}, p = it.out.plan, pr = it.out.plan.write.device ? profileFor(it.dev, p.t) : null;
-    rows.push([it.path, it.out.key, it.kind, it.out.ok ? "yes" : "no", ex.date ? (ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC") : "", p.write.date || p.write.offsetOnly ? human(p.t) : "", p.off != null && (p.write.date || p.write.offsetOnly) ? fmtOffset(p.off) : "", p.zone || "", p.write.date && it.date ? it.date.label : "", p.write.date && it.date ? it.date.conf.toFixed(2) : "", ex.gps ? ex.gps.la : "", ex.gps ? ex.gps.lo : "", p.write.gps ? p.la : "", p.write.gps ? p.lo : "", p.write.gps && it.loc ? it.loc.label : "", it.loc && it.loc.place ? it.loc.place : "", pr ? pr.model : "", it.out.ok ? it.out.summary.join("; ") : it.out.diffs.join("; ")]);
+    rows.push([it.path, it.out.key, it.kind, it.out.ok ? "yes" : "no", ex.date ? (ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC") : "", p.write.date || p.write.offsetOnly ? human(p.t) : "", p.off != null && (p.write.date || p.write.offsetOnly) ? fmtOffset(p.off) : "", p.zone || "", p.write.date && it.date ? it.date.label : "", p.write.date && it.date ? it.date.conf.toFixed(2) : "", ex.gps ? ex.gps.la : "", ex.gps ? ex.gps.lo : "", p.write.gps ? p.la : "", p.write.gps ? p.lo : "", p.write.gps && it.loc ? it.loc.label : "", it.loc && it.loc.place ? it.loc.place : "", pr ? pr.model : "", ...auditCols(it), it.out.ok ? it.out.summary.join("; ") : it.out.diffs.join("; ")]);
   }
   return rows.map((r) => r.map((v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\r\n");
 }
@@ -500,7 +503,81 @@ function openExport() {
   body.querySelectorAll("[data-sh]").forEach((b) => (b.onclick = async () => { try { await navigator.share({ files: [files[+b.dataset.sh]] }); } catch (e) { if (e.name !== "AbortError") toast("Sharing didn't work here. Use Save instead."); } }));
   body.querySelectorAll("[data-dl]").forEach((b) => (b.onclick = () => downloadBlob(files[+b.dataset.dl], good[+b.dataset.dl].out.name)));
 }
-$("#b-export").onclick = () => (counts().ready ? exportReady() : openExport());
+$("#b-export").onclick = () => startExport();
+
+/* ------------------------------------------------------------------ authenticity check (the step before export) */
+async function startExport() {
+  const list = S.items.filter((x) => !x.out && x.exState === "done");
+  if (!list.length) return openExport();
+  S.busy = true; $("#b-export").disabled = true;
+  try {
+    for (let i = 0; i < list.length; i++) {
+      if (!list[i].auth || (!list[i].auth.a && !list[i].auth.err)) await runAssess(list[i]);
+      if (i % 20 === 19) { setStatus(`Checking authenticity... ${i + 1} of ${list.length}`); await new Promise((r) => setTimeout(r)); }
+    }
+  } finally { S.busy = false; refresh(); }
+  if (S.settings.authMode === "flagged" && !list.some((x) => x.auth && x.auth.a && x.auth.a.flagged)) return exportList().length ? exportReady() : openExport();
+  openAuth(list);
+}
+const needsLook = (x) => !x.auth || !x.auth.a || x.auth.a.flagged || x.auth.a.score >= 35;
+function auCard(it) {
+  const au = it.auth, x = au && au.a;
+  const head = `${it.thumb ? `<img src="${it.thumb}" alt="">` : '<span class="au-ph"></span>'}<div class="au-body"><h3>${esc(it.path)}</h3>`;
+  if (!x) return `<article class="au-card" data-id="${it.id}">${head}<p class="note err">Could not check this file${au && au.err ? ": " + esc(au.err) : ""}. It can still be exported.</p></div></article>`;
+  const t = auTone(x), none = x.level === "Not enough evidence";
+  const ev = x.evidence.filter((e) => e.id !== "stripped" ? Math.abs(e.w) > 0 || e.tone === "warn" : true).slice(0, 6);
+  const cc = au.claims && au.claims.present ? `<p class="note">Content Credentials found (${esc(au.claims.container)}${au.claims.issuer ? ", " + esc(au.claims.issuer) : ""}). Signatures are not validated here. Saving changes invalidates the signature, but the manifest is kept.</p>` : "";
+  return `<article class="au-card" data-id="${it.id}">${head}
+    <div class="au-meter">${none ? `<span class="au-score au-mid">-</span>` : `<span class="au-score au-${t}" aria-hidden="true">${x.score}</span><span class="au-bar au-${t}" role="img" aria-label="${esc(meterLabel(x))}"><i style="left:${x.band[0]}%;width:${Math.max(2, x.band[1] - x.band[0])}%"></i><b style="left:${x.score}%"></b></span>`}<span><b>${esc(x.level)}</b>${none ? "" : ` . ${esc(x.confidence)} confidence (${x.band[0]}-${x.band[1]})`}</span></div>
+    ${ev.length ? `<ul class="au-ev">${ev.map((e) => `<li>${esc(e.title)}${e.detail ? ` <span class="note">- ${esc(e.detail)}</span>` : ""}</li>`).join("")}</ul>` : ""}
+    ${cc}<p class="note" style="margin:6px 0 0">${x.suggestions.map(esc).join(" ")}</p>
+    <div class="au-fixwrap">${auFix(it)}</div></div></article>`;
+}
+function auFix(it) {
+  const au = it.auth, pv = previewFix(it);
+  const opt = (v, l) => `<option value="${v}" ${au.disclosure === v ? "selected" : ""}>${l}</option>`;
+  return `<div class="au-fix"><label class="chk"><input type="checkbox" data-fix="${it.id}" ${au.fix ? "checked" : ""}> Apply Fix on export</label>
+    <label>Disclosure label <select data-disc="${it.id}">${opt("auto", "Automatic")}${opt("ai", "AI-generated")}${opt("composite", "AI-edited")}${opt("none", "No label")}</select></label></div>
+    <p class="note" style="margin:2px 0 0">${pv && pv.actions.length ? "Fix would: " + pv.actions.map(esc).join("; ") + "." : "Fix has nothing to change with these settings."} It never removes or hides AI provenance.${status(it) !== "ready" && au.fix && pv && pv.actions.length ? " This file had nothing else to change, so Fix will export a corrected copy." : ""}</p>`;
+}
+function openAuth(list) {
+  const d = $("#dlg-auth"), body = $("#auth-body"), foot = $("#auth-foot");
+  const attention = list.filter(needsLook), fine = list.filter((x) => !needsLook(x));
+  const flagged = list.filter((x) => x.auth && x.auth.a && x.auth.a.flagged);
+  const mode = aiMode(), canV = () => attention.filter((x) => x.auth && x.auth.a && !x.auth.vision && !x.auth.busy);
+  const CAP = 60;
+  const goLabel = () => { const n = exportList().length; const b = $("#au-go"); if (b) { b.textContent = n ? `Continue to export (${n})` : "Continue"; } };
+  const draw = () => {
+    body.innerHTML = `<p class="note">An advisory heuristic from the file's metadata, Content Credentials and (if you run it) a look at the picture. It is not proof either way, and it never blocks your export. Files marked genuine can still be edited; files marked AI can still be genuine.</p>
+      <div class="au-sum"><span><b>${list.length}</b> checked</span><span class="${flagged.length ? "warn" : "okc"}"><b>${flagged.length}</b> flagged</span><span class="note" style="margin:0">${fine.length} look fine</span></div>
+      ${attention.slice(0, CAP).map(auCard).join("")}${attention.length > CAP ? `<p class="note">${attention.length - CAP} more files need a look; they are exported with the same settings and are listed in the audit log.</p>` : ""}
+      ${fine.length ? `<details><summary>${fine.length} file${fine.length === 1 ? "" : "s"} with no concerns</summary><ul class="au-ev">${fine.slice(0, 200).map((x) => `<li>${esc(x.path)} <span class="note">- ${x.auth && x.auth.a ? x.auth.a.score + ", " + esc(x.auth.a.level) : "not checked"}</span></li>`).join("")}</ul></details>` : ""}`;
+    const n = canV().length, fixable = flagged.filter((x) => previewFix(x) && previewFix(x).actions.length && !x.auth.fix).length;
+    foot.innerHTML = `<button type="button" id="au-vis" ${n && mode !== "none" ? "" : "disabled"}>Run visual check (${n}${mode === "account" ? " credit" + (n === 1 ? "" : "s") : ""})</button><button type="button" id="au-fixall" ${fixable ? "" : "disabled"}>Apply Fix to flagged (${fixable})</button><button type="button" id="au-back" class="ghost">Back</button><button type="button" id="au-go" class="pri"></button><span id="au-msg" class="note" role="status" aria-live="polite" style="flex-basis:100%;margin:0;text-align:right"></span>`;
+    goLabel();
+    $("#au-back").onclick = () => d.close();
+    $("#au-go").onclick = () => { d.close(); exportList().length ? exportReady() : openExport(); };
+    $("#au-fixall").onclick = () => { for (const x of flagged) { const pv = previewFix(x); if (pv && pv.actions.length) x.auth.fix = true; } draw(); $("#au-go").focus(); };
+    $("#au-vis").onclick = async () => {
+      const todo = canV(), msg = (t) => ($("#au-msg").textContent = t);
+      if (mode === "account" && !acct.user) { d.close(); return openAccount("signin", "Sign in to use the visual check."); }
+      let q = todo; if (mode === "account" && acct.credits != null && acct.credits < q.length) { if (acct.credits <= 0) { d.close(); return openAccount("buy", "You're out of AI credits."); } q = q.slice(0, acct.credits); }
+      $("#au-vis").disabled = true; let ok = 0, fail = 0, halt = null;
+      for (const [i, it] of q.entries()) {
+        msg(`Visual check ${i + 1} of ${q.length}...`);
+        try { it.auth.vision = await authVision(await aiImage(it)); await runAssess(it); ok++; }
+        catch (e) { fail++; if (["signin", "no_credits", "bad_key", "no_ai", "no_backend"].includes(e.code)) { halt = e; break; } if (e.code === "rate_limited") await new Promise((r) => setTimeout(r, 4000)); }
+      }
+      draw(); $("#au-msg").textContent = `Visual check: ${ok} done${fail ? `, ${fail} failed` : ""}.`;
+      if (halt) { if (halt.code === "signin") { d.close(); openAccount("signin", halt.message); } else if (halt.code === "no_credits") { d.close(); openAccount("buy", halt.message); } else toast(halt.message, 5000); }
+    };
+  };
+  body.onchange = (e) => {
+    const t = e.target, id = t.dataset.fix || t.dataset.disc, it = id && byId(+id); if (!it) return;
+    if (t.dataset.fix) { it.auth.fix = t.checked; goLabel(); } else { it.auth.disclosure = t.value; if (t.value !== "auto") it.auth.fix = it.auth.fix || false; t.closest(".au-fixwrap").innerHTML = auFix(it); body.querySelector(`[data-disc="${id}"]`).focus(); }
+  };
+  draw(); if (!d.open) d.showModal();
+}
 
 /* ------------------------------------------------------------------ settings */
 let delArm = null;
@@ -529,6 +606,7 @@ function openSettings(focus) {
   <label>Pattern<input id="s-pat" value="${esc(st.pattern)}" spellcheck="false"></label>
   <p class="note">Example: <b class="mono">${esc(exName)}</b><br>Tokens: {orig} {date} {time} {y} {m} {d} {seq} {seq4} {device} {place} {ext} {EXT}</p></div>
   <div class="sect"><h3>Export</h3>
+  <label>Authenticity check<select id="s-auth"><option value="always" ${st.authMode !== "flagged" ? "selected" : ""}>Show before every export</option><option value="flagged" ${st.authMode === "flagged" ? "selected" : ""}>Only when a file is flagged</option></select></label>
   <label>Delivery<select id="s-deliv"><option value="auto" ${st.delivery === "auto" ? "selected" : ""}>Separate files; ZIP when files came from several folders</option><option value="zip" ${st.delivery === "zip" ? "selected" : ""}>Always offer a ZIP first</option></select></label></div>
   <div class="sect" id="s-ai-sect"><h3>AI suggestions</h3>
   <p class="note">${acct.configured ? "AI suggestions use credits from your account." : "AI suggestions through an account are coming soon."} Advanced: use your own Anthropic API key instead. It stays in this browser and images go straight to Anthropic.</p>
@@ -546,6 +624,7 @@ function openSettings(focus) {
   $("#s-pat").onchange = (e) => upd("pattern", e.target.value.trim() || "{orig}");
   $("#s-seq").onchange = (e) => upd("seq", Math.max(0, parseInt(e.target.value, 10) || 1));
   $("#s-deliv").onchange = (e) => upd("delivery", e.target.value);
+  $("#s-auth").onchange = (e) => upd("authMode", e.target.value);
   $("#s-tpl").onchange = (e) => { const n = e.target.value; $("#s-tdel").disabled = !n; delArm = null; $("#s-tdel").textContent = "Delete"; if (!n) return; applySnapshot(store.templates[n]); $("#s-tname").value = n; toast(`Applied template "${n}".`); openSettings(); $("#s-tpl").value = n; $("#s-tname").value = n; $("#s-tdel").disabled = false; };
   $("#s-tsave").onclick = async () => { const n = $("#s-tname").value.trim().slice(0, 40); if (!n) { $("#s-tname").focus(); return toast("Type a name for the template."); } const existed = n in store.templates; const ok = await store.saveTemplate(n, snapshot()); toast(`${existed ? "Updated" : "Saved"} template "${n}"${ok === false ? " in this browser (account sync failed)" : ""}.`); openSettings(); $("#s-tpl").value = n; $("#s-tname").value = n; $("#s-tdel").disabled = false; };
   $("#s-tdel").onclick = async () => { const n = $("#s-tpl").value; if (!n) return; if (delArm !== n) { delArm = n; $("#s-tdel").textContent = "Tap again to delete"; setTimeout(() => { if (delArm === n) { delArm = null; const b = $("#s-tdel"); if (b) b.textContent = "Delete"; } }, 4000); return; } delArm = null; await store.deleteTemplate(n); toast(`Deleted "${n}".`); openSettings(); };
@@ -660,4 +739,4 @@ if (qs.get("checkout")) { history.replaceState(null, "", location.pathname); if 
 const warm = () => loadEngine().catch(() => {});
 ["#drop", "#pickdir", "#plan-free"].forEach((sel) => { const el = $(sel); if (el) { el.addEventListener("pointerenter", warm, { once: true }); el.addEventListener("touchstart", warm, { once: true, passive: true }); } });
 addEventListener("dragenter", warm, { once: true });
-window.__mf = { S, status, plan };
+window.__mf = { S, status, plan, renderAll, refresh };

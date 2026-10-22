@@ -31,7 +31,7 @@ async def main():
         await pg.click("#grid .tile >> text=text.jpg"); await pg.wait_for_selector(".warnbox")
         check("warning visible in inspector", "isn't a photo" in await pg.inner_text(".warnbox"))
         await pg.evaluate("window.__mf.S.items.forEach(x=>{ if(!x.date){x.date={t:Date.UTC(2020,0,2,3,4,5),off:null,src:'manual',label:'t',conf:1,manual:true}} })")
-        await pg.click("#filters [data-f=all]"); await pg.click("#b-ready"); await pg.click("#b-export")
+        await pg.click("#filters [data-f=all]"); await pg.click("#b-ready"); await pg.click("#b-export"); await pg.wait_for_selector("#dlg-auth[open]", timeout=120000); await pg.click("#au-go")
         await pg.wait_for_selector("#dlg-export[open]", timeout=120000)
         outs = await pg.evaluate("Object.fromEntries(window.__mf.S.items.map(x=>[x.name,x.out?{ok:x.out.ok,name:x.out.name,msg:x.out.diffs.join(';')}:null]))")
         check("png named jpg is written as .png and verified", outs["really_png.jpg"] and outs["really_png.jpg"]["ok"] and outs["really_png.jpg"]["name"].endswith(".png"), outs["really_png.jpg"])

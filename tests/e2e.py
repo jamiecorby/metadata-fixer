@@ -89,7 +89,7 @@ async def main():
         await pg.click("#b-ready"); await pg.wait_for_timeout(200)
         ready = await pg.evaluate("window.__mf.S.items.filter(x=>window.__mf.status(x)==='ready').length")
         check("files marked ready", ready >= 10, ready)
-        await pg.click("#b-export")
+        await pg.click("#b-export"); await pg.wait_for_selector("#dlg-auth[open]", timeout=120000); await pg.click("#au-go")
         await pg.wait_for_selector("#dlg-export[open]", timeout=300000)
         summ = await pg.inner_text("#export-body .sumline"); print("   export:", summ)
         bad = await pg.evaluate("window.__mf.S.items.filter(x=>x.out && !x.out.ok).map(x=>x.name+': '+x.out.diffs.join('; '))")

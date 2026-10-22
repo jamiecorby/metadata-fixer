@@ -12,8 +12,8 @@
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="assets/app.css?v=385435cfd2">
-<script type="module" src="assets/main.js?v=385435cfd2"></script>
+<link rel="stylesheet" href="assets/app.css?v=be9186d97c">
+<script type="module" src="assets/main.js?v=be9186d97c"></script>
 </head>
 <body>
 <header class="top">
@@ -62,6 +62,7 @@
     <details><summary>Will it change my pictures?</summary><p>No. Only metadata is changed; image and video data are left as they are. Your originals stay untouched: you save new copies.</p></details>
     <details><summary>What if a photo already has some metadata?</summary><p>By default it only fills what's missing. Anything already in the file is kept unless you choose to overwrite it.</p></details>
     <details><summary>Does it handle time zones and daylight saving?</summary><p>Yes. Times are written with the correct offset for the place and date, so photos sort correctly in Apple Photos and Google Photos.</p></details>
+    <details><summary>What does the Authenticity check do, and can I trust it?</summary><p>Before export it reads each file's own evidence: Content Credentials (C2PA), the IPTC "digital source type", AI tool and prompt fields (Midjourney, DALL-E, Stable Diffusion, Firefly and others) and camera, lens and date combinations that cannot be right. It gives a 0-100 AI likelihood with a range, the evidence and plain suggestions. It is a heuristic, not proof: an image with no markers can still be AI-made, and a marked image can be genuine. Content Credentials are detected and read but their signatures are not validated here. An optional visual check (1 AI credit per file) can add a second opinion but can never be decisive. It only advises: nothing is blocked, and Fix can add an accurate disclosure label or correct inconsistent metadata, but never removes or hides AI provenance.</p></details>
     <details><summary>How accurate are AI suggestions?</summary><p>They're estimates from what's visible: season, light, landmarks, signs. Each comes with a confidence and the reasons, and is never applied without your review.</p></details>
   </div>
 </section>
@@ -133,6 +134,12 @@
 <dialog id="dlg-account" class="dlg"><form method="dialog">
   <header><h2 id="acct-title">Account</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
   <div class="dlg-body" id="acct-body"></div>
+</form></dialog>
+
+<dialog id="dlg-auth" class="dlg wide" aria-labelledby="auth-h"><form method="dialog">
+  <header><h2 id="auth-h">Authenticity check</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body" id="auth-body"></div>
+  <footer class="dlg-foot" id="auth-foot"></footer>
 </form></dialog>
 
 <dialog id="dlg-export" class="dlg wide"><form method="dialog">

@@ -39,7 +39,7 @@ async def main():
         await asyncio.sleep(1)
         await pg.keyboard.press("Escape")
         await pg.evaluate("window.__mf.S.items.forEach(x=>{ if(!x.date){x.date={t:Date.UTC(2020,0,2,3,4,5),off:null,src:'manual',label:'t',conf:1,manual:true}} })")
-        await pg.click("#b-ready"); await pg.click("#b-export"); await pg.wait_for_selector("#dlg-export[open]", timeout=120000)
+        await pg.click("#b-ready"); await pg.click("#b-export"); await pg.wait_for_selector("#dlg-auth[open]", timeout=120000); await pg.click("#au-go"); await pg.wait_for_selector("#dlg-export[open]", timeout=120000)
         print("export:", (await pg.inner_text("#export-body .sumline")).replace("\n", " "))
         async with pg.expect_download() as d: await pg.click("#x-zip")
         print("zip download:", (await d.value).suggested_filename)

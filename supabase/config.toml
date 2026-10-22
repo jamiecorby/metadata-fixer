@@ -2,6 +2,9 @@
 [functions.suggest]
 verify_jwt = true
 
+[functions.authenticity]
+verify_jwt = true
+
 [functions.checkout]
 verify_jwt = true
 
