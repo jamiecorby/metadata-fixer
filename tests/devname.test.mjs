@@ -17,4 +17,13 @@ await t("round trip through the engine, apostrophe intact", async () => {
   const r = await runBatch([{ path: "/o.jpg", data: new File([w.outs["/o.jpg"]], "o") }], ["-json", "-n", "-G1", "-IFD0:all", "-ExifIFD:all", "-GPS:all", "/o.jpg"], wf);
   const exp = Object.fromEntries(Object.entries(b.expect).filter(([k]) => !k.startsWith("Composite"))); const v = verify(JSON.parse(r.out)[0], exp); assert.ok(v.ok, v.diffs.join("; ")); assert.equal(JSON.parse(r.out)[0]["IFD0:HostComputer"], "George's iPhone");
 });
+for (const [file, ext] of [["tests/fixtures/plain.jpg", "jpg"], ["tests/fixtures/san/base.png", "png"], ["tests/fixtures/san/base.webp", "webp"], ["tests/fixtures/san/base.tif", "tif"]]) await t("the app's own read-back (READ_ARGS) sees the device name on ." + ext, async () => {
+  const wasm = readFileSync("w/zeroperl.wasm"), wf = () => Promise.resolve(new Response(wasm, { headers: { "Content-Type": "application/wasm" } }));
+  const { READ_ARGS } = await import("../src/core/existing.js");
+  const b = buildTags({ ...base, name: "George's iPhone", full: true });
+  const lines = ["-m", ...Object.entries(b.tags).map(([k, v]) => `-${k}=${v}`), "-o", "/o." + ext, "/i." + ext, "-execute"];
+  const w = await runBatch([{ path: "/i." + ext, data: new File([readFileSync(file)], "i") }, { path: "/args.txt", data: new File([lines.join("\n") + "\n"], "a") }], ["-@", "/args.txt"], wf, ["/o." + ext]);
+  const r = await runBatch([{ path: "/o." + ext, data: new File([w.outs["/o." + ext]], "o") }], [...READ_ARGS, "/o." + ext], wf);
+  const v = verify(JSON.parse(r.out)[0], b.expect); assert.ok(v.ok, v.diffs.join("; "));
+});
 console.log(`devname: ${pass} checks passed`); process.exit(process.exitCode || 0);

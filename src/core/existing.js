@@ -76,6 +76,6 @@ function damage(r, kind) {
   if (/truncated|corrupt|bad |invalid|unexpected|end of file|not a valid/i.test(w)) return "The file looks damaged (" + w.slice(0, 140) + "). Metadata can still be written, but check the result opens correctly.";
   return null;
 }
-export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-ExifIFD:LensModel", "-XMP:all", "-IPTC:all", "-Composite:DateTimeCreated", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize", "-File:FileType", "-File:FileTypeExtension", "-ExifTool:Warning", "-ExifTool:Error",
+export const READ_ARGS = ["-json", "-n", "-G1", "-a", "-time:all", "-gps:all", "-Keys:all", "-UserData:all", "-IFD0:Make", "-IFD0:Model", "-IFD0:Software", "-IFD0:HostComputer", "-ExifIFD:LensModel", "-XMP:all", "-IPTC:all", "-Composite:DateTimeCreated", "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", "-File:ImageWidth", "-File:ImageHeight", "-Composite:ImageSize", "-File:FileType", "-File:FileTypeExtension", "-ExifTool:Warning", "-ExifTool:Error",
   // for the authenticity check
   "-PNG:all", "-JUMBF:all", "-MakerNotes:all", "-ExifIFD:ExposureTime", "-ExifIFD:FNumber", "-ExifIFD:ISO", "-ExifIFD:FocalLength", "-ExifIFD:FocalLengthIn35mmFormat", "-ExifIFD:LensMake", "-IFD0:ImageDescription", "-IFD0:Artist", "-ExifIFD:UserComment", "-File:Comment"];
