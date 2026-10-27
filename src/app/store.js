@@ -2,7 +2,7 @@
 import { localZone } from "../core/tz.js";
 import { acct, cloudGet, cloudSet } from "./account.js";
 const K = { settings: "mf2.settings", templates: "mf2.templates", last: "mf2.last", ctx: "mf2.ctx" };
-export const DEFAULTS = () => ({ zone: localZone(), policy: "fill", dev: "none", full: true, label: true, pattern: "{orig}", seq: 1, delivery: "auto", authMode: "always", devName: "" });
+export const DEFAULTS = () => ({ zone: localZone(), policy: "fill", dev: "none", full: true, label: true, pattern: "{orig}", seq: 1, delivery: "auto", authMode: "always", devName: "", clean: false });
 const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 

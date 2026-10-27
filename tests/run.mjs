@@ -6,6 +6,7 @@ const suites = [
   ["engine: batch", "node", ["tests/batch.test.mjs"]],
   ["engine: damaged files", "node", ["tests/damaged.test.mjs"]],
   ["unit: device name", "node", ["tests/devname.test.mjs"]],
+  ["unit: start clean", "node", ["tests/clean.test.mjs"]],
   ["unit: AI provider layer", "node", ["tests/gemini.test.mjs"]],
   ["engine: authenticity", "node", ["tests/authenticity.test.mjs"]],
   ["browser: end to end", "python3", ["-W", "ignore", "tests/e2e.py"]],

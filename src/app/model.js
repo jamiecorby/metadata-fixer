@@ -153,7 +153,7 @@ export function plan(it) {
   const st = S.settings, ex = it.ex || {};
   const d = it.date, l = it.loc;
   const exDate = ex.date && !ex.date.weak ? ex.date : null;
-  const overwrite = st.policy === "overwrite";
+  const overwrite = st.policy === "overwrite" || !!st.clean;
   const zone = it.zone || (l ? l.zone || zoneAt(l.la, l.lo) || st.zone : itemZone(it));
   // absolute (UTC) sources are converted with the FINAL zone, so a later location or zone change can't shift the instant
   const t = d ? (d.u != null ? utcToNaive(zone, d.u) : d.t) : null;

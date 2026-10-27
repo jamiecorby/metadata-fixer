@@ -102,6 +102,12 @@ export async function writeMany(jobs, onChunk) {
         const ext = extOf(j.name), inp = `/w${j.id}.${ext}`, out = `/o${j.id}.${ext}`;
         files.push({ path: inp, data: j.blob instanceof File ? j.blob : new File([j.blob], "f") });
         lines.push("-m");
+        if (j.clean) { // start from a clean slate: everything except orientation and the colour profile is removed before the new values are written
+          const vid = /^(mp4|mov|m4v|3gp|avi|mkv)$/.test(ext);
+          for (const g of vid ? ["Keys", "UserData", "XMP"] : ["EXIF", "GPS", "IPTC", "XMP", "MakerNotes", "Photoshop"]) lines.push(`-${g}:all=`);
+          lines.push("-Comment=");
+          if (!vid) lines.push("-tagsfromfile", "@", "-IFD0:Orientation");
+        }
         for (const [k, v] of Object.entries(j.tags)) lines.push(`-${k}=${String(v).replace(/[\r\n]+/g, " ")}`);
         lines.push("-o", out, inp, "-execute");
         outs.push(out); j._in = inp; j._out = out;

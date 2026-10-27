@@ -456,7 +456,7 @@ async function exportReady() {
     const part = jobs.slice(i, i + 25);
     setStatus(`Writing and verifying ${done + 1}-${done + part.length} of ${jobs.length}...`);
     let written = new Map(), back = new Map();
-    try { written = await writeMany(part.map((j) => ({ id: j.it.id, blob: j.it.file, name: fsName(j.it), tags: j.b.tags }))); } catch (e) { for (const j of part) written.set(j.it.id, e); }
+    try { written = await writeMany(part.map((j) => ({ id: j.it.id, blob: j.it.file, name: fsName(j.it), tags: j.b.tags, clean: !!S.settings.clean }))); } catch (e) { for (const j of part) written.set(j.it.id, e); }
     const okW = part.filter((j) => written.get(j.it.id) instanceof Uint8Array);
     try { back = await readMany(okW.map((j) => ({ id: j.it.id, blob: new Blob([written.get(j.it.id)]), name: fsName(j.it) }))); } catch (e) { for (const j of okW) back.set(j.it.id, e); }
     for (const j of part) {
@@ -602,6 +602,7 @@ function openSettings(focus) {
   <label class="chk"><input type="checkbox" id="s-label" ${st.label ? "checked" : ""}> Mark changed files with an XMP label "Reconstructed metadata"</label></div>
   <div class="sect"><h3>Device</h3>
   <label>Device details for new files<select id="s-dev">${devOptions(st.dev)}</select></label>
+  <label class="chk"><input type="checkbox" id="s-clean" ${st.clean ? "checked" : ""}> Start clean: remove all existing metadata (dates, location, device, text fields) before writing. Anything not replaced is lost. Files carrying AI provenance are refused rather than stripped.</label>
   <label>Device name (the phone these photos came from)<input id="s-devname" maxlength="60" value="${esc(st.devName || "")}" placeholder="e.g. George's iPhone" autocomplete="off"></label>
   <label class="chk"><input type="checkbox" id="s-full" ${st.full ? "checked" : ""}> Full iPhone tag set (lens, 35mm equivalent, metering, white balance)</label></div>
   <div class="sect"><h3>File names</h3>
@@ -623,6 +624,7 @@ function openSettings(focus) {
   $("#s-label").onchange = (e) => upd("label", e.target.checked);
   $("#s-dev").onchange = (e) => upd("dev", e.target.value);
   $("#s-full").onchange = (e) => upd("full", e.target.checked);
+  $("#s-clean").onchange = (e) => upd("clean", e.target.checked);
   $("#s-devname").onchange = (e) => { const v = e.target.value.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60); if (v && S.settings.dev === "none") { S.settings.dev = "era"; S.items.forEach((x) => { if (!x.out && (x.dev == null || x.dev === "none")) x.dev = "era"; }); toast(`Photos will be written as coming from "${v}". Device model set to match each photo's date; pick a specific iPhone model below if you know it.`, 6500); } upd("devName", v); };
   $("#s-preset").onchange = (e) => { if (e.target.value) upd("pattern", BUILTIN[e.target.value]); };
   $("#s-pat").onchange = (e) => upd("pattern", e.target.value.trim() || "{orig}");
