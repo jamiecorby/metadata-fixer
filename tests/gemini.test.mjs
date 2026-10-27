@@ -29,6 +29,19 @@ await t("anthropic request and answer shape unchanged", async () => {
   assert.equal(seen.url, "https://api.anthropic.com/v1/messages"); assert.equal(seen.init.headers["x-api-key"], "sk-x"); assert.equal(seen.body.messages[0].content[0].source.data, "QUJD");
   assert.deepEqual([r.ok, r.text, r.inTok, r.outTok], [true, "hi", 5, 2]);
 });
+// retry and fallback
+const seq = (...rs) => { const urls = []; let i = 0; globalThis.fetch = async (url) => { urls.push(String(url)); const [st, b] = rs[Math.min(i++, rs.length - 1)]; return new Response(JSON.stringify(b), { status: st }); }; return urls; };
+const OK_G = [200, { candidates: [{ content: { parts: [{ text: "{}" }] } }] }], OK_A = [200, { content: [{ type: "text", text: "{}" }] }];
+const Q = [429, { error: { message: "You exceeded your current quota, please check your plan and billing details" } }], BUSY = [503, { error: { message: "high demand" } }];
+const W = { image: "QUJD", prompt: "P", maxTokens: 100 };
+await t("gemini quota exhausted falls back to Claude immediately", async () => { env.ANTHROPIC_API_KEY = "a"; env.GEMINI_API_KEY = "g"; const u = seq(Q, OK_A); const r = await m.callWithFallback("gemini", W); assert.equal(r.provider, "anthropic"); assert.equal(r.ok, true); assert.equal(u.length, 2); assert.match(u[1], /anthropic/); });
+await t("a 503 is retried once on the same provider before falling back", async () => { const u = seq(BUSY, OK_G); const r = await m.callWithFallback("gemini", W); assert.equal(r.provider, "gemini"); assert.equal(u.length, 2); });
+await t("persistent 503 falls back to Claude", async () => { const u = seq(BUSY, BUSY, OK_A); const r = await m.callWithFallback("gemini", W); assert.equal(r.provider, "anthropic"); assert.equal(u.length, 3); });
+await t("no fallback when the other key is missing: failure is returned, credit gets refunded upstream", async () => { delete env.ANTHROPIC_API_KEY; const u = seq(Q); const r = await m.callWithFallback("gemini", W); assert.equal(r.ok, false); assert.equal(r.status, 429); assert.equal(u.length, 1); env.ANTHROPIC_API_KEY = "a"; });
+await t("a 400 is the caller's problem: no retry, no fallback", async () => { const u = seq([400, { error: { message: "bad" } }], OK_A); const r = await m.callWithFallback("gemini", W); assert.equal(r.status, 400); assert.equal(u.length, 1); });
+await t("claude primary can fall back to gemini", async () => { const u = seq(BUSY, BUSY, OK_G); const r = await m.callWithFallback("anthropic", W); assert.equal(r.provider, "gemini"); });
+await t("friendly errors name the cause without leaking internals", () => { assert.match(m.friendlyError({ status: 429, err: "quota exceeded", ok: false, text: "" }), /quota or billing/); assert.match(m.friendlyError({ status: 503, err: "x", ok: false, text: "" }), /busy/); });
+
 // answers the app parses: Gemini JSON output must clean through the same functions
 const { cleanVision } = await import("../src/core/authprompt.js");
 await t("a Gemini JSON answer cleans like a Claude one", () => assert.equal(cleanVision('{"score":70,"confidence":0.5,"cues":[]}').score, 70));

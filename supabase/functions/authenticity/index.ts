@@ -2,10 +2,11 @@
 // Images are never stored or logged. No caller-supplied text reaches the model, so this can't be used as a general AI proxy.
 import { admin, cors, json, userFrom } from "./common.ts";
 import { buildAuthPrompt, cleanVision } from "./prompt.js";
-import { callVision, keyFor, modelFor, pickProvider } from "./llm.ts";
+import { callWithFallback, friendlyError, keyFor, modelFor, pickProvider } from "./llm.ts";
 // AI_PROVIDER = anthropic (default) or gemini; AUTH_PROVIDER overrides it for this function.
 const PROVIDER = pickProvider(Deno.env.get("AUTH_PROVIDER") || Deno.env.get("AI_PROVIDER"));
-const MODEL = modelFor(PROVIDER, Deno.env.get("AUTH_MODEL") || Deno.env.get("AI_MODEL"));
+const ANTHROPIC_MODEL = Deno.env.get("AUTH_MODEL") || Deno.env.get("AI_MODEL");
+const MODEL = modelFor(PROVIDER, ANTHROPIC_MODEL);
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
@@ -18,8 +19,7 @@ Deno.serve(async (req) => {
   try { body = JSON.parse(raw); } catch { return json(req, { error: "Bad request" }, 400); }
   const image = typeof body.image === "string" ? body.image : "";
   if (!image || image.length > 2_000_000 || !/^[A-Za-z0-9+/]+=*$/.test(image)) return json(req, { error: "Image missing or invalid" }, 400);
-  const key = keyFor(PROVIDER);
-  if (!key) return json(req, { error: "AI is not configured yet" }, 503);
+  if (!keyFor(PROVIDER) && !keyFor(PROVIDER === "gemini" ? "anthropic" : "gemini")) return json(req, { error: "AI is not configured yet" }, 503);
   const db = admin();
   // record the request first, so parallel requests count against the rate limit
   const { data: row, error: re } = await db.from("ai_requests").insert({ user_id: user.id, ok: false, model: MODEL, error: "pending" }).select("id").single();
@@ -32,9 +32,9 @@ Deno.serve(async (req) => {
   if (ce) { await done({ error: "credit_check" }); return json(req, { error: "Credit check failed" }, 500); }
   if (left < 0) { await done({ error: "no_credits" }); return json(req, { error: "Out of credits", credits: 0 }, 402); }
   const t0 = Date.now();
-  let res: Awaited<ReturnType<typeof callVision>>;
+  let res: Awaited<ReturnType<typeof callWithFallback>>;
   try {
-    res = await callVision(PROVIDER, { key, model: MODEL, image, prompt: buildAuthPrompt(), maxTokens: 500 });
+    res = await callWithFallback(PROVIDER, { image, prompt: buildAuthPrompt(), maxTokens: 500, anthropicModel: ANTHROPIC_MODEL });
   } catch (e) {
     const { data: back } = await db.rpc("refund_credit", { p_user: user.id });
     await done({ ms: Date.now() - t0, error: "upstream: " + String((e as Error).message || e).slice(0, 200) });
@@ -42,16 +42,16 @@ Deno.serve(async (req) => {
   }
   if (!res.ok) {
     const { data: back } = await db.rpc("refund_credit", { p_user: user.id });
-    await done({ ms: Date.now() - t0, error: "upstream " + res.status + ": " + (res.err || "") });
-    return json(req, { error: res.status === 429 || res.status === 529 ? "The AI is busy; your credit was refunded. Try again shortly." : "The AI service failed; your credit was refunded.", credits: back }, 502);
+    await done({ ms: Date.now() - t0, model: res.model, error: `upstream ${res.provider} ${res.status}: ${res.err || ""}`.slice(0, 250) });
+    return json(req, { error: friendlyError(res), credits: back }, 502);
   }
   try {
     const answer = cleanVision(res.text);
-    await done({ ok: true, error: null, input_tokens: res.inTok, output_tokens: res.outTok, ms: Date.now() - t0 });
+    await done({ ok: true, error: null, model: res.model, input_tokens: res.inTok, output_tokens: res.outTok, ms: Date.now() - t0 });
     return json(req, { answer, credits: left });
   } catch (_e) {
     // the model answered but not in the required format: no refund (the call was made and billed)
-    await done({ input_tokens: res.inTok, output_tokens: res.outTok, ms: Date.now() - t0, error: "unparseable answer" });
+    await done({ model: res.model, input_tokens: res.inTok, output_tokens: res.outTok, ms: Date.now() - t0, error: "unparseable answer" });
     return json(req, { error: "The AI couldn't give a usable answer for this image.", credits: left }, 422);
   }
 });

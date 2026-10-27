@@ -65,8 +65,9 @@ export function buildTags(v) {
       Object.assign(T, { "IFD0:Make": "Apple", "IFD0:Model": pr.model, "IFD0:Software": pr.ios, "ExifIFD:LensMake": "Apple", "ExifIFD:LensModel": pr.lens, "ExifIFD:FocalLength": pr.fl, "ExifIFD:FNumber": pr.fn });
       if (v.full) Object.assign(T, { "IFD0:HostComputer": pr.model, "ExifIFD:FocalLengthIn35mmFormat": pr.f35, "ExifIFD:ExifVersion": "0232", "ExifIFD:SensingMethod": "One-chip color area", "ExifIFD:MeteringMode": "Multi-segment", "ExifIFD:ExposureMode": "Auto", "ExifIFD:WhiteBalance": "Auto", "ExifIFD:SceneCaptureType": "Standard" });
       E["IFD0:Model"] = pr.model;
+      if (v.name) { T["IFD0:HostComputer"] = v.name; E["IFD0:HostComputer"] = v.name; } // the device name iOS records, e.g. "George's iPhone"
     }
-    S.push(`Device ${pr.model} (iOS ${pr.ios})`);
+    S.push(`Device ${pr.model} (iOS ${pr.ios})${v.name && !video ? ", named " + v.name : ""}`);
   }
   if (Object.keys(T).length && v.label) T["XMP-xmp:Label"] = "Reconstructed metadata";
   return { tags: T, expect: E, summary: S };

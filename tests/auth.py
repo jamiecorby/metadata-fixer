@@ -118,6 +118,21 @@ async def main():
         await until(pg, "window.__mf.S.items.some(x=>x.ai)", 60)
         check("Gemini date suggestion parsed by the existing code", await pg.evaluate("window.__mf.S.items.some(x=>x.ai&&x.ai.dates&&x.ai.dates.length)"))
         await ctx.close()
+        # a provider that keeps failing must stop the run after 3 failures, not burn through every file
+        ctx = await b.new_context(viewport={"width": 1280, "height": 900}); pg = await ctx.new_page()
+        n500 = []
+        async def boom(route):
+            n500.append(1); await route.fulfill(status=500, content_type="application/json", body=json.dumps({"error": {"message": "x"}}), headers={"access-control-allow-origin": "*"})
+        await pg.route("https://api.anthropic.com/**", boom)
+        await pg.goto(BASE); await pg.set_input_files("#pick", [FX + n for n in NAMES[:6]])
+        await until(pg, "window.__mf.S.items.length==6 && window.__mf.S.items.every(x=>x.exState==='done')")
+        await pg.click("#btn-settings"); await pg.fill("#s-key", "sk-ant-test-key-1234"); await pg.click("#s-keysave")
+        await pg.fill("#s-devname", "George's iPhone"); await pg.press("#s-devname", "Tab"); await pg.keyboard.press("Escape")
+        check("device name sets a device model automatically", await pg.evaluate("window.__mf.S.settings.dev!=='none' && window.__mf.S.settings.devName===\"George's iPhone\""))
+        await pg.click("#selall") if await pg.is_visible("#selall") else None
+        await pg.click("#b-ai"); await until(pg, "!window.__mf.S.busy", 60)
+        check("run stops after 3 failures in a row", len(n500) == 3, len(n500))
+        await ctx.close()
         await b.close()
 asyncio.run(main())
 check("no CSP violations or page errors", not csp, csp)

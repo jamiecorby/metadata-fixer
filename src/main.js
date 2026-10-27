@@ -203,7 +203,7 @@ function renderInspector() {
   zoneDatalist();
   const s = status(it), p = plan(it), dc = dateCands(it), lc = locCands(it);
   const d = it.date, l = it.loc, ex = it.ex || {};
-  const built = buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, label: S.settings.label, write: p.write });
+  const built = buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, name: S.settings.devName, label: S.settings.label, write: p.write });
   const w = warnings(it);
   const idx = visible().indexOf(it), vis = visible();
   const exLine = it.exState === "pending" ? "Reading..." : [ex.date ? `date ${ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC"}${ex.date.off != null ? " " + fmtOffset(ex.date.off) : ""}` : "no date", ex.gps ? `GPS ${ex.gps.la.toFixed(4)}, ${ex.gps.lo.toFixed(4)}` : "no GPS", ex.device && ex.device.model ? ex.device.model : "no device"].join(" . ");
@@ -362,7 +362,7 @@ async function runAI(list) {
   if (mode === "account" && !acct.user) { openAccount("signin", "Sign in to use AI suggestions. New accounts get " + CONFIG.starterCredits + " free credits."); return; }
   if (mode === "account" && acct.credits != null && acct.credits < list.length) { if (acct.credits <= 0) return openAccount("buy", "You're out of AI credits."); toast(`You have ${acct.credits} credits; the first ${acct.credits} files will be done.`); list = list.slice(0, acct.credits); }
   S.busy = true; stopFlag = false; $("#b-stop").hidden = false; $("#prog").hidden = list.length < 2; $("#prog").max = list.length; $("#prog").value = 0;
-  let ok = 0, fail = 0, halt = null;
+  let ok = 0, fail = 0, halt = null, streak = 0;
   for (let i = 0; i < list.length && !stopFlag; i++) {
     const it = list[i];
     setStatus(`Asking the AI about ${esc(it.name)} (${i + 1} of ${list.length})...`);
@@ -370,9 +370,10 @@ async function runAI(list) {
     try {
       const img = await aiImage(it);
       it.ai = await suggest(img, aiContext(it));
-      applyAiTop(it); ok++;
+      applyAiTop(it); ok++; streak = 0;
     } catch (e) {
-      fail++; it.aiErr = e.message || "AI failed";
+      fail++; streak++; it.aiErr = e.message || "AI failed";
+      if (streak >= 3 && !halt) halt = Object.assign(new Error(`Stopped after ${streak} failures in a row, so no more credits are spent. Last error: ${it.aiErr}`), { code: "streak" });
       if (["signin", "no_credits", "bad_key", "no_ai", "no_backend"].includes(e.code)) { halt = e; }
       if (e.code === "rate_limited") await new Promise((r) => setTimeout(r, 4000));
     }
@@ -440,7 +441,7 @@ async function exportReady() {
   for (const it of list) {
     const p = plan(it);
     const fix = fixFor(it);
-    const b = mergeFix(buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, label: S.settings.label, write: p.write }), p, fix);
+    const b = mergeFix(buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, name: S.settings.devName, label: S.settings.label, write: p.write }), p, fix);
     let name = applyPattern(S.settings.pattern, { name: it.name, t: p.t, dev: it.dev }, { seq, place: (it.loc && it.loc.place) || (S.ctx.area && S.ctx.area.name) });
     if (it.realExt) name = name.replace(/\.[^.]*$/, "") + "." + it.realExt;
     if (usesSeq(S.settings.pattern)) seq++;
@@ -474,7 +475,7 @@ function auditCsv() {
   const rows = [["original_file", "output_file", "type", "verified", "date_before", "date_after", "utc_offset", "time_zone", "date_source", "date_confidence", "lat_before", "lon_before", "lat_after", "lon_after", "location_source", "place", "device_after", ...AUDIT_HEAD, "notes"]];
   for (const it of S.items) if (it.out) {
     const ex = it.ex || {}, p = it.out.plan, pr = it.out.plan.write.device ? profileFor(it.dev, p.t) : null;
-    rows.push([it.path, it.out.key, it.kind, it.out.ok ? "yes" : "no", ex.date ? (ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC") : "", p.write.date || p.write.offsetOnly ? human(p.t) : "", p.off != null && (p.write.date || p.write.offsetOnly) ? fmtOffset(p.off) : "", p.zone || "", p.write.date && it.date ? it.date.label : "", p.write.date && it.date ? it.date.conf.toFixed(2) : "", ex.gps ? ex.gps.la : "", ex.gps ? ex.gps.lo : "", p.write.gps ? p.la : "", p.write.gps ? p.lo : "", p.write.gps && it.loc ? it.loc.label : "", it.loc && it.loc.place ? it.loc.place : "", pr ? pr.model : "", ...auditCols(it), it.out.ok ? it.out.summary.join("; ") : it.out.diffs.join("; ")]);
+    rows.push([it.path, it.out.key, it.kind, it.out.ok ? "yes" : "no", ex.date ? (ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC") : "", p.write.date || p.write.offsetOnly ? human(p.t) : "", p.off != null && (p.write.date || p.write.offsetOnly) ? fmtOffset(p.off) : "", p.zone || "", p.write.date && it.date ? it.date.label : "", p.write.date && it.date ? it.date.conf.toFixed(2) : "", ex.gps ? ex.gps.la : "", ex.gps ? ex.gps.lo : "", p.write.gps ? p.la : "", p.write.gps ? p.lo : "", p.write.gps && it.loc ? it.loc.label : "", it.loc && it.loc.place ? it.loc.place : "", pr ? pr.model + (S.settings.devName && it.kind !== "video" ? " - " + S.settings.devName : "") : "", ...auditCols(it), it.out.ok ? it.out.summary.join("; ") : it.out.diffs.join("; ")]);
   }
   return rows.map((r) => r.map((v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\r\n");
 }
@@ -601,6 +602,7 @@ function openSettings(focus) {
   <label class="chk"><input type="checkbox" id="s-label" ${st.label ? "checked" : ""}> Mark changed files with an XMP label "Reconstructed metadata"</label></div>
   <div class="sect"><h3>Device</h3>
   <label>Device details for new files<select id="s-dev">${devOptions(st.dev)}</select></label>
+  <label>Device name (the phone these photos came from)<input id="s-devname" maxlength="60" value="${esc(st.devName || "")}" placeholder="e.g. George's iPhone" autocomplete="off"></label>
   <label class="chk"><input type="checkbox" id="s-full" ${st.full ? "checked" : ""}> Full iPhone tag set (lens, 35mm equivalent, metering, white balance)</label></div>
   <div class="sect"><h3>File names</h3>
   <div class="two"><label>Preset<select id="s-preset"><option value="">Custom</option>${Object.keys(BUILTIN).map((k) => `<option${presetHit === k ? " selected" : ""}>${k}</option>`).join("")}</select></label><label>Start numbering at<input id="s-seq" inputmode="numeric" value="${esc(st.seq)}"></label></div>
@@ -621,6 +623,7 @@ function openSettings(focus) {
   $("#s-label").onchange = (e) => upd("label", e.target.checked);
   $("#s-dev").onchange = (e) => upd("dev", e.target.value);
   $("#s-full").onchange = (e) => upd("full", e.target.checked);
+  $("#s-devname").onchange = (e) => { const v = e.target.value.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60); if (v && S.settings.dev === "none") { S.settings.dev = "era"; S.items.forEach((x) => { if (!x.out && (x.dev == null || x.dev === "none")) x.dev = "era"; }); toast(`Photos will be written as coming from "${v}". Device model set to match each photo's date; pick a specific iPhone model below if you know it.`, 6500); } upd("devName", v); };
   $("#s-preset").onchange = (e) => { if (e.target.value) upd("pattern", BUILTIN[e.target.value]); };
   $("#s-pat").onchange = (e) => upd("pattern", e.target.value.trim() || "{orig}");
   $("#s-seq").onchange = (e) => upd("seq", Math.max(0, parseInt(e.target.value, 10) || 1));
