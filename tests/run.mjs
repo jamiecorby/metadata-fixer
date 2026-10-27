@@ -7,12 +7,15 @@ const suites = [
   ["engine: damaged files", "node", ["tests/damaged.test.mjs"]],
   ["unit: device name", "node", ["tests/devname.test.mjs"]],
   ["unit: start clean", "node", ["tests/clean.test.mjs"]],
+  ["unit: sanitise core (byte level)", "node", ["tests/sanitise.test.mjs"]],
+  ["unit: sanitise batch, ZIP, audit", "node", ["tests/sanrun.test.mjs"]],
   ["unit: AI provider layer", "node", ["tests/gemini.test.mjs"]],
   ["engine: authenticity", "node", ["tests/authenticity.test.mjs"]],
   ["browser: end to end", "python3", ["-W", "ignore", "tests/e2e.py"]],
   ["browser: damaged files", "python3", ["-W", "ignore", "tests/damaged.py"]],
   ["browser: map", "python3", ["-W", "ignore", "tests/map.py"]],
   ["browser: authenticity check", "python3", ["-W", "ignore", "tests/auth.py"]],
+  ["browser: sanitise mode", "python3", ["-W", "ignore", "tests/san.py"]],
   ["browser: content security policy", "python3", ["-W", "ignore", "tests/csp.py"]],
 ];
 if (process.env.PERF) suites.push(["browser: 200-file performance", "python3", ["-W", "ignore", "tests/perf.py"]]);

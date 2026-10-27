@@ -701,6 +701,15 @@ let dragDepth = 0;
 addEventListener("dragenter", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { dragDepth++; $("#drop").classList.add("over"); } });
 addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("#drop").classList.remove("over"); } });
 addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+let sanMod = null;
+async function setMode(m) {
+  const san = m === "sanitise"; document.body.dataset.mode = m;
+  $("#sanitise").hidden = !san; $("#btn-mode").textContent = san ? "Recover dates and places" : "Sanitise files";
+  const has = S.items.length > 0; $("#landing").hidden = san || has; $("#work").hidden = san || !has; $("#bar").hidden = san || !has;
+  if (san) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.mount({ recoverFiles: () => S.items.map((x) => x.file) }); scrollTo(0, 0); }
+}
+$("#btn-mode").onclick = () => setMode(document.body.dataset.mode === "sanitise" ? "recover" : "sanitise");
+const routeFiles = (files) => (document.body.dataset.mode === "sanitise" && sanMod ? sanMod.addFiles(files) : addFiles(files));
 addEventListener("drop", async (e) => {
   if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
   e.preventDefault(); dragDepth = 0; $("#drop").classList.remove("over");
@@ -709,8 +718,8 @@ addEventListener("drop", async (e) => {
     const out = [];
     const walk = (ent, path) => new Promise((res) => { if (ent.isFile) ent.file((f) => { try { Object.defineProperty(f, "webkitRelativePath", { value: path + f.name }); } catch (er) {} out.push(f); res(); }, () => res()); else { const r = ent.createReader(), all = []; const rd = () => r.readEntries(async (es) => { if (!es.length) { for (const c of all) await walk(c, path + ent.name + "/"); res(); } else { all.push(...es); rd(); } }, () => res()); rd(); } });
     for (const it of items) await walk(it, "");
-    addFiles(out);
-  } else addFiles(e.dataTransfer.files);
+    routeFiles(out);
+  } else routeFiles(e.dataTransfer.files);
 });
 addEventListener("keydown", (e) => {
   if (document.querySelector("dialog[open]") || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName) || $("#work").hidden) return;

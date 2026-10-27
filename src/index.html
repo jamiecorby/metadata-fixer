@@ -20,6 +20,7 @@
   <a class="brand" href="./" aria-label="Metadata Fixer home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>Metadata Fixer</span></a>
   <span class="chip engine" id="engine" hidden></span>
   <nav class="topnav">
+    <button class="ghost" id="btn-mode" title="Remove all embedded metadata from files">Sanitise files</button>
     <button class="ghost" id="btn-help" title="Keyboard shortcuts and help" aria-label="Help">?</button>
     <button class="ghost" id="btn-settings">Settings</button>
     <button class="ghost" id="btn-account" hidden></button>
@@ -62,7 +63,8 @@
     <details><summary>Will it change my pictures?</summary><p>No. Only metadata is changed; image and video data are left as they are. Your originals stay untouched: you save new copies.</p></details>
     <details><summary>What if a photo already has some metadata?</summary><p>By default it only fills what's missing. Anything already in the file is kept unless you choose to overwrite it.</p></details>
     <details><summary>Does it handle time zones and daylight saving?</summary><p>Yes. Times are written with the correct offset for the place and date, so photos sort correctly in Apple Photos and Google Photos.</p></details>
-    <details><summary>What does the Authenticity check do, and can I trust it?</summary><p>Before export it reads each file's own evidence: Content Credentials (C2PA), the IPTC "digital source type", AI tool and prompt fields (Midjourney, DALL-E, Stable Diffusion, Firefly and others) and camera, lens and date combinations that cannot be right. It gives a 0-100 AI likelihood with a range, the evidence and plain suggestions. It is a heuristic, not proof: an image with no markers can still be AI-made, and a marked image can be genuine. Content Credentials are detected and read but their signatures are not validated here. An optional visual check (1 AI credit per file) can add a second opinion but can never be decisive. It only advises: nothing is blocked, and Fix can add an accurate disclosure label or correct inconsistent metadata, but never removes or hides AI provenance.</p></details>
+    <details><summary>What does Sanitise files do?</summary><p>It is a separate mode (button at the top) that makes clean copies of photos and videos with embedded metadata removed: EXIF, GPS, dates, camera and software details, XMP, IPTC, comments, thumbnails and previews, rotation tags, colour profiles, Content Credentials manifests and data hidden after the end of the file. Image data is copied unchanged where possible; a file that needs its rotation or colours applied to the pixels is redrawn (and says so). Each result is read back and checked, and the report lists what was removed and what could not be inspected. It never claims that every possible hidden structure is gone: video encoders can leave text inside the video stream itself, which this cannot see. RAW files and GIFs are not supported. Nothing is uploaded, and Recover mode is untouched.</p></details>
+    <details><summary>What does the Authenticity check do, and can I trust it?</summary><p>Before export it reads each file's own evidence: Content Credentials (C2PA), the IPTC "digital source type", AI tool and prompt fields (Midjourney, DALL-E, Stable Diffusion, Firefly and others) and camera, lens and date combinations that cannot be right. It gives a 0-100 AI likelihood with a range, the evidence and plain suggestions. It is a heuristic, not proof: an image with no markers can still be AI-made, and a marked image can be genuine. Content Credentials are detected and read but their signatures are not validated here. An optional visual check (1 AI credit per file) can add a second opinion but can never be decisive. It only advises: nothing is blocked, and In Recover mode, Fix can add an accurate disclosure label or correct inconsistent metadata, but never removes or hides AI provenance. The separate Sanitise mode does the opposite on purpose: it removes embedded metadata, including Content Credentials, and says so in its report.</p></details>
     <details><summary>How accurate are AI suggestions?</summary><p>They're estimates from what's visible: season, light, landmarks, signs. Each comes with a confidence and the reasons, and is never applied without your review.</p></details>
   </div>
 </section>
@@ -79,6 +81,29 @@
     <div class="grid" id="grid" role="listbox" aria-multiselectable="true" aria-label="Files"></div>
   </div>
   <aside class="insp" id="insp" aria-label="Details"></aside>
+</section>
+<section id="sanitise" hidden aria-labelledby="san-h">
+  <div class="san">
+    <h1 id="san-h">Sanitise files</h1>
+    <p class="lead">Remove embedded metadata and other non-essential data from photos and videos. Files are processed in your browser and never uploaded. Your originals are not changed: you get new files.</p>
+    <label class="drop" id="san-drop" for="san-pick"><b>Drop files here</b><span>or tap to choose files</span><small>JPEG, PNG, WebP, TIFF, HEIC/HEIF/AVIF, MP4, MOV. RAW files are not supported.</small></label>
+    <input id="san-pick" type="file" multiple accept="image/*,video/*,.heic,.heif,.avif,.mov,.mp4,.m4v,.tif,.tiff" hidden>
+    <input id="san-dirpick" type="file" webkitdirectory multiple hidden>
+    <div class="san-alt"><button class="ghost" id="san-dir">Choose a folder</button><button class="ghost" id="san-from" hidden></button></div>
+    <div class="san-opts">
+      <label class="chk"><input type="checkbox" id="san-redraw" checked> <span>Redraw the picture when needed, to remove a rotation tag or a colour profile without changing how it looks (re-encodes that file)</span></label>
+      <label class="chk"><input type="checkbox" id="san-aux"> <span>Also remove embedded extra images and videos (motion photos, gain maps, previews)</span></label>
+    </div>
+    <div class="san-bar">
+      <button class="pri" id="san-go" disabled>Sanitise</button>
+      <button class="ghost" id="san-zip" disabled>Download ZIP</button>
+      <button class="ghost" id="san-audit" disabled>Audit log</button>
+      <button class="ghost" id="san-clear" disabled>Clear</button>
+    </div>
+    <progress id="san-prog" hidden max="1" value="0"></progress>
+    <p class="san-sum" id="san-sum" role="status" aria-live="polite">No files yet.</p>
+    <ul class="san-list" id="san-list" aria-label="Files to sanitise"></ul>
+  </div>
 </section>
 </main>
 
@@ -140,6 +165,11 @@
   <header><h2 id="auth-h">Authenticity check</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
   <div class="dlg-body" id="auth-body"></div>
   <footer class="dlg-foot" id="auth-foot"></footer>
+</form></dialog>
+
+<dialog id="dlg-san" class="dlg wide" aria-labelledby="san-rep-h"><form method="dialog">
+  <header><h2 id="san-rep-h">Sanitisation report</h2><button class="x" value="close" aria-label="Close">&times;</button></header>
+  <div class="dlg-body" id="san-rep"></div>
 </form></dialog>
 
 <dialog id="dlg-export" class="dlg wide"><form method="dialog">

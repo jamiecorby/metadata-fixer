@@ -120,3 +120,13 @@ export async function writeMany(jobs, onChunk) {
   }
   return res;
 }
+
+/** All tags ExifTool can read from one file, as {"Group:Name": value}. Used by the sanitiser as a second, independent reader. */
+export function readRaw(blob, name) {
+  return serial(async () => {
+    await loadEngine();
+    const ext = extOf(name), path = `/s.${ext}`;
+    const r = await (await lib()).runBatch([{ path, data: blob instanceof File ? blob : new File([blob], "f") }], ["-json", "-G1", "-a", "-u", "-s", path], wfetch);
+    try { return JSON.parse(r.out || "[{}]")[0] || {}; } catch (e) { return {}; }
+  });
+}
