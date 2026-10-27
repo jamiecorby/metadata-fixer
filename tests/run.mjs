@@ -16,6 +16,7 @@ const suites = [
   ["browser: map", "python3", ["-W", "ignore", "tests/map.py"]],
   ["browser: authenticity check", "python3", ["-W", "ignore", "tests/auth.py"]],
   ["browser: sanitise mode", "python3", ["-W", "ignore", "tests/san.py"]],
+  ["browser: saved work and resume", "python3", ["-W", "ignore", "tests/cache.py"]],
   ["browser: content security policy", "python3", ["-W", "ignore", "tests/csp.py"]],
 ];
 if (process.env.PERF) suites.push(["browser: 200-file performance", "python3", ["-W", "ignore", "tests/perf.py"]]);

@@ -19,6 +19,7 @@
 <header class="top">
   <a class="brand" href="./" aria-label="Metadata Fixer home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>Metadata Fixer</span></a>
   <span class="chip engine" id="engine" hidden></span>
+  <button type="button" class="chip saved" id="clear-cache" hidden title="Your unfinished work is kept in this browser only, and cleared after 30 minutes without activity.">Saved here - clear</button>
   <nav class="topnav">
     <button class="ghost" id="btn-mode" title="Remove all embedded metadata from files">Sanitise files</button>
     <button class="ghost" id="btn-help" title="Keyboard shortcuts and help" aria-label="Help">?</button>
@@ -27,6 +28,7 @@
   </nav>
 </header>
 
+<div id="resume" class="resume" role="region" aria-label="Unfinished work" hidden></div>
 <main>
 <section id="landing">
   <div class="hero">
@@ -96,6 +98,7 @@
     </div>
     <div class="san-bar">
       <button class="pri" id="san-go" disabled>Sanitise</button>
+      <button class="ghost" id="san-next" disabled>Continue in Recover</button>
       <button class="ghost" id="san-zip" disabled>Download ZIP</button>
       <button class="ghost" id="san-audit" disabled>Audit log</button>
       <button class="ghost" id="san-clear" disabled>Clear</button>

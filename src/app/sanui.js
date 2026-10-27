@@ -8,7 +8,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
 const plural = (n, w) => `${n} ${n === 1 ? w : w + "s"}`;
 
-let E = [], nextId = 1, running = false, mounted = false, recoverFiles = () => [];
+let E = [], nextId = 1, running = false, mounted = false, recoverFiles = () => [], toRecover = null;
 const O = { redraw: true, dropAux: false, used: new Set(), cancelled: () => false };
 
 /** Draws the picture again through a canvas: applies its rotation, converts to sRGB, and carries no metadata. */
@@ -29,6 +29,26 @@ const io = { redraw, readTags: readRaw };
 
 function download(blob, name) { const u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); }
 function toast(m) { const t = $("#toast"); if (!t) return; t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 3500); }
+
+/** Live state for the session cache, and the way back in after an interruption. */
+export const exportState = () => ({ entries: E, opts: { redraw: O.redraw, dropAux: O.dropAux } });
+export const isRunning = () => running;
+export function importState(st) {
+  E = st.entries.map((m) => { const e = newEntry(m.file, nextId++); const { file, ...rest } = m; Object.assign(e, rest); e.state = e.state === "working" ? "queued" : e.state; return e; });
+  O.redraw = st.opts ? st.opts.redraw !== false : true; O.dropAux = !!(st.opts && st.opts.dropAux);
+  O.used = new Set(E.filter((x) => x.out).map((x) => x.out.name.toLowerCase()));
+  if (mounted) { $("#san-redraw").checked = O.redraw; $("#san-aux").checked = O.dropAux; }
+  render();
+}
+/** Sanitised results as files, named and placed as in the ZIP, ready to go on to the next step. */
+export function outputsAsFiles() {
+  return E.filter((e) => e.out && (e.state === "verified" || e.state === "limited")).map((e) => {
+    const dir = e.path.includes("/") ? e.path.replace(/\/[^/]*$/, "") + "/" : "";
+    const f = new File([e.out.blob], e.out.name, { type: e.out.blob.type, lastModified: e.file.lastModified });
+    try { Object.defineProperty(f, "webkitRelativePath", { value: dir + e.out.name }); } catch (er) {}
+    return f;
+  });
+}
 
 export function addFiles(list) {
   const known = new Set(E.map((x) => x.path + "|" + x.size));
@@ -65,6 +85,7 @@ function render() {
   $("#san-go").disabled = running || !E.some((x) => x.state === "queued");
   $("#san-zip").disabled = running || !s.ok; $("#san-audit").disabled = running || !E.some((x) => x.state !== "queued" && x.state !== "working");
   $("#san-clear").disabled = running || !E.length;
+  const nx = $("#san-next"); if (nx) { nx.disabled = running || !s.ok || !toRecover; nx.textContent = s.ok ? `Continue in Recover (${s.ok})` : "Continue in Recover"; }
   $("#san-go").textContent = running ? "Working..." : E.length && !E.some((x) => x.state === "queued") ? "Sanitise" : E.some((x) => x.state === "queued") ? `Sanitise ${plural(E.filter((x) => x.state === "queued").length, "file")}` : "Sanitise";
   const parts = [];
   if (s.verified) parts.push(`${s.verified} verified`); if (s.limited) parts.push(`${s.limited} verified with limitations`); if (s.decision) parts.push(`${s.decision} need${s.decision === 1 ? "s" : ""} a decision`); if (s.failed) parts.push(`${s.failed} failed`); if (s.unsupported) parts.push(`${s.unsupported} not supported`); if (s.queued) parts.push(`${s.queued} waiting`);
@@ -94,13 +115,14 @@ async function go(entries) {
 }
 
 export function mount(api = {}) {
-  recoverFiles = api.recoverFiles || (() => []);
+  recoverFiles = api.recoverFiles || (() => []); toRecover = api.toRecover || null;
   if (!mounted) {
     mounted = true;
     $("#san-pick").onchange = (ev) => { addFiles(ev.target.files); ev.target.value = ""; };
     $("#san-dirpick").onchange = (ev) => { addFiles(ev.target.files); ev.target.value = ""; };
     $("#san-dir").onclick = () => $("#san-dirpick").click();
     $("#san-from").onclick = () => addFiles(recoverFiles());
+    $("#san-next").onclick = () => { if (toRecover) toRecover(outputsAsFiles()); };
     $("#san-redraw").onchange = (ev) => { O.redraw = ev.target.checked; };
     $("#san-aux").onchange = (ev) => { O.dropAux = ev.target.checked; if (O.dropAux) E.filter((x) => x.state === "decision" && x.key === "aux").forEach((x) => { x.state = "queued"; x.msg = ""; }); render(); };
     $("#san-go").onclick = () => go(E);

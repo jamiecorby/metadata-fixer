@@ -225,3 +225,12 @@ body.working .site{display:none}
 #dlg-san .mut{color:var(--mut);font-size:13px}
 body[data-mode="sanitise"] .site{display:none}
 @media (max-width:640px){.top{flex-wrap:wrap}.topnav{flex-wrap:wrap;margin-left:0;width:100%;justify-content:flex-end}}
+
+/* saved-work chip and resume banner */
+.chip.saved{background:none;cursor:pointer;font-family:var(--mono)}
+.chip.saved:hover,.chip.saved:focus-visible{color:var(--ink);border-color:var(--ink)}
+.resume{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin:0 auto;max-width:1100px;padding:12px 16px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:10px;background:var(--panel);margin-top:12px;width:calc(100% - 32px)}
+.resume[hidden]{display:none}
+.resume p{margin:0;min-width:0;flex:1 1 320px}
+.resume .rs-sub{display:block;color:var(--mut);font-size:13px;margin-top:2px}
+.resume .rs-act{display:flex;gap:8px;flex-wrap:wrap}

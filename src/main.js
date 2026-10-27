@@ -17,6 +17,7 @@ import { runAssess, fixFor, previewFix, mergeFix, verifyFix, auditCols, AUDIT_HE
 import { acct, onAccount, initAccount, signIn, signOut, buy, refreshCredits } from "./app/account.js";
 import * as store from "./app/store.js";
 import { pickLocation } from "./app/map.js";
+import * as session from "./app/session.js";
 
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -36,6 +37,7 @@ const persistCtx = () => store.saveCtx(S.ctx);
 /* ------------------------------------------------------------------ files */
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 async function addFiles(list) {
+  if (pendingResume) dismissResume(true);
   const files = [...list].filter((f) => !f.name.startsWith(".") && f.size > 0);
   const media = files.filter((f) => PHOTO.test(f.name) || VIDEO.test(f.name));
   const cars = files.filter((f) => isSidecar(f.name));
@@ -706,7 +708,7 @@ async function setMode(m) {
   const san = m === "sanitise"; document.body.dataset.mode = m;
   $("#sanitise").hidden = !san; $("#btn-mode").textContent = san ? "Recover dates and places" : "Sanitise files";
   const has = S.items.length > 0; $("#landing").hidden = san || has; $("#work").hidden = san || !has; $("#bar").hidden = san || !has;
-  if (san) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.mount({ recoverFiles: () => S.items.map((x) => x.file) }); scrollTo(0, 0); }
+  if (san) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.mount({ recoverFiles: () => S.items.map((x) => x.file), toRecover: handOff }); scrollTo(0, 0); }
 }
 $("#btn-mode").onclick = () => setMode(document.body.dataset.mode === "sanitise" ? "recover" : "sanitise");
 const routeFiles = (files) => (document.body.dataset.mode === "sanitise" && sanMod ? sanMod.addFiles(files) : addFiles(files));
@@ -735,6 +737,79 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("beforeunload", (e) => { if (S.items.some((x) => x.ready || (x.out && x.out.ok)) ) { e.preventDefault(); e.returnValue = ""; } });
 
+
+/* ------------------------------------------------------------------ saved work (resume after an interruption) */
+let pendingResume = null;
+const when = (t) => { const m = Math.max(0, Math.round((session.cfg.now() - t) / 60000)); return m < 1 ? "less than a minute ago" : m === 1 ? "a minute ago" : m + " minutes ago"; };
+function handOff(files) {
+  if (!files.length) return toast("Nothing sanitised to continue with yet.");
+  setMode("recover");
+  addFiles(files);
+}
+function dismissResume(discard) {
+  const b = $("#resume"); b.hidden = true; b.innerHTML = "";
+  const had = pendingResume; pendingResume = null;
+  if (discard && had) session.discard().finally(() => session.hold(false)); else if (discard) session.hold(false);
+}
+function showResume(sess) {
+  const d = session.describe(sess), parts = [];
+  if (d.san) parts.push(`Sanitise: ${d.san.done} of ${plural(d.san.total, "file")} done${d.san.failed ? `, ${d.san.failed} need attention` : ""}`);
+  if (d.recover) parts.push(`Recover: ${plural(d.recover.total, "file")}${d.recover.ai ? `, ${d.recover.ai} with AI suggestions` : ""}${d.recover.ready ? `, ${d.recover.ready} marked ready` : ""}${d.recover.exported ? `, ${d.recover.exported} exported` : ""}`);
+  const b = $("#resume");
+  b.innerHTML = `<p><b>Pick up where you left off?</b> <span class="rs-sub">${esc(parts.join(". "))}. Saved ${esc(when(d.savedAt))}${d.notKept ? `; ${plural(d.notKept, "file")} too large to keep, so add ${d.notKept === 1 ? "it" : "them"} again` : ""}. Kept in this browser only, and cleared after 30 minutes without activity.</span></p>
+    <span class="rs-act"><button type="button" class="pri" id="rs-go">Resume</button><button type="button" class="ghost" id="rs-no">Discard</button></span>`;
+  b.hidden = false; pendingResume = sess;
+  $("#rs-go").onclick = () => resumeNow();
+  $("#rs-no").onclick = () => { dismissResume(true); toast("Saved work discarded."); };
+}
+async function resumeNow() {
+  const sess = pendingResume; if (!sess) return;
+  const btn = $("#rs-go"); if (btn) { btn.disabled = true; btn.textContent = "Restoring..."; }
+  let data;
+  try { data = await session.load(sess); } catch (e) { dismissResume(true); session.hold(false); return toast("The saved work couldn't be read, so it was cleared. Add your files again."); }
+  dismissResume(false);
+  if (data.san && data.san.entries.length) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.importState({ entries: data.san.entries, opts: data.san.opts }); }
+  if (data.recover) {
+    const r = data.recover, idMap = new Map(), made = [];
+    S.cars = r.cars || []; S.match = sidecarMatcher(S.cars);
+    for (const x of r.items) {
+      const m = x.m, it = newItem(x.file);
+      Object.assign(it, { cid: m.cid, exErr: m.exErr, realExt: m.realExt, ai: m.ai, aiErr: m.aiErr, date: m.date, loc: m.loc, locCleared: m.locCleared, dev: m.dev, zone: m.zone, ready: m.ready, auth: m.auth });
+      if (m.exState === "done" && (x.exRaw || m.exErr)) {
+        it.exState = "done";
+        if (x.exRaw) { it.exRaw = x.exRaw; it.ex = interpretExisting(x.exRaw, it.kind); it.realExt = realExt(it.ex.fileExt, it.name); } else it.ex = { date: null, gps: null, device: null };
+      }
+      if (m.out && x.bytes) { it.out = { ok: m.out.ok, diffs: m.out.diffs, bytes: x.bytes, name: m.out.name, dir: m.out.dir, key: m.out.key, summary: m.out.summary, mt: m.out.mt, plan: m.out.plan }; session.tagOut(it.out, m.out.ver); }
+      it.side = S.match ? S.match(it.name) : null;
+      idMap.set(m.cid, it); made.push(it);
+    }
+    S.items.push(...made); S.items.sort((a, b) => collator.compare(a.path, b.path));
+    if (S.items.length) { S.focus = S.items[0].id; S.sel = new Set([S.focus]); }
+    if (r.filter) S.filter = r.filter;
+    showWork(); renderAll();
+    const unread = made.filter((x) => x.exState !== "done");
+    if (unread.length) readQueue(unread);
+  }
+  await setMode(data.mode === "sanitise" && data.san ? "sanitise" : "recover");
+  session.hold(false);
+  toast(data.missing ? `Restored. ${plural(data.missing, "file")} couldn't be found in the saved copy.` : "Restored. Carry on from where you were.");
+}
+function savedChip() { session.present().then((p) => { $("#clear-cache").hidden = !p; }).catch(() => {}); }
+$("#clear-cache").onclick = async () => { await session.discard(); $("#clear-cache").hidden = true; toast("Saved work cleared from this browser. What's open on screen is unchanged."); };
+session.start({
+  getRecover: () => ({ items: S.items, cars: S.cars, focus: S.focus, filter: S.filter }),
+  getSan: () => (sanMod ? sanMod.exportState() : null),
+  getMode: () => document.body.dataset.mode || "recover",
+  isBusy: () => S.busy || !!(sanMod && sanMod.isRunning()),
+}, (ev) => {
+  if (ev === "expired") { $("#clear-cache").hidden = true; if (pendingResume) { dismissResume(false); session.hold(false); } }
+  else if (ev === "partial") { if (!partialShown) { partialShown = true; toast("Some large files can't be kept for resuming. If you're interrupted, add those again.", 6000); } }
+});
+let partialShown = false;
+setInterval(() => { if (!pendingResume) savedChip(); }, 5000);
+session.hold(true);
+session.find().then((sess) => { if (sess && !S.items.length) showResume(sess); else { if (sess) session.discard(); session.hold(false); savedChip(); } }).catch(() => session.hold(false));
+
 /* ------------------------------------------------------------------ boot */
 onEngine((en) => {
   const c = $("#engine");
@@ -754,4 +829,4 @@ if (qs.get("checkout")) { history.replaceState(null, "", location.pathname); if 
 const warm = () => loadEngine().catch(() => {});
 ["#drop", "#pickdir", "#plan-free"].forEach((sel) => { const el = $(sel); if (el) { el.addEventListener("pointerenter", warm, { once: true }); el.addEventListener("touchstart", warm, { once: true, passive: true }); } });
 addEventListener("dragenter", warm, { once: true });
-window.__mf = { S, status, plan, renderAll, refresh };
+window.__mf = { S, status, plan, renderAll, refresh, session, openExport };
