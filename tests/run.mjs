@@ -1,10 +1,12 @@
 // Runs every suite in order and fails if any does. `npm test` runs this; BASE=<url> points the browser tests at a live site.
 import { spawnSync } from "child_process";
+import "../scripts/patch-zeroperl.mjs";
 const suites = [
   ["unit: core", "node", ["tests/core.test.mjs"]],
   ["unit: model", "node", ["tests/model.test.mjs"]],
   ["engine: batch", "node", ["tests/batch.test.mjs"]],
   ["engine: damaged files", "node", ["tests/damaged.test.mjs"]],
+  ["engine: large files (linear write, streamed ZIP)", "node", ["tests/bigfile.test.mjs"]],
   ["unit: device name", "node", ["tests/devname.test.mjs"]],
   ["unit: start clean", "node", ["tests/clean.test.mjs"]],
   ["unit: sanitise core (byte level)", "node", ["tests/sanitise.test.mjs"]],
@@ -17,6 +19,7 @@ const suites = [
   ["browser: authenticity check", "python3", ["-W", "ignore", "tests/auth.py"]],
   ["browser: sanitise mode", "python3", ["-W", "ignore", "tests/san.py"]],
   ["browser: saved work and resume", "python3", ["-W", "ignore", "tests/cache.py"]],
+  ["browser: phone limits", "python3", ["-W", "ignore", "tests/phone.py"]],
   ["browser: content security policy", "python3", ["-W", "ignore", "tests/csp.py"]],
 ];
 if (process.env.PERF) suites.push(["browser: 200-file performance", "python3", ["-W", "ignore", "tests/perf.py"]]);

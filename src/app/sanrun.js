@@ -1,6 +1,6 @@
 // Sanitisation batch orchestration. No DOM, no network, no recovery code: it takes File objects and returns Blobs and reports.
 // The browser supplies `io.redraw` (canvas) and `io.readTags` (ExifTool); tests supply their own.
-import { zipSync, strToU8 } from "fflate";
+import { zipBlobs } from "./zipstream.js";
 import { sanitise, detect, Unsupported, Damaged, NeedsDecision, NeedsReencode, EXT_FOR, RAW_EXT } from "../core/sanitise.js";
 import { verifyOutput, metaTagValues } from "../core/sanverify.js";
 
@@ -109,13 +109,13 @@ export async function buildZip(entries, withAudit = true) {
   const good = entries.filter((e) => e.out && (e.state === "verified" || e.state === "limited"));
   const total = good.reduce((a, e) => a + e.out.size, 0);
   if (total > ZIP_MAX) throw new Error("These files total over 1 GB, which is too much to bundle in the browser. Download them one by one.");
-  const used = new Map(), z = {}, mtime = new Date("1980-01-01T00:00:00");
+  const used = new Map(), list = [], date = new Date("1980-01-01T00:00:00");
   for (const e of good) {
     const dir = safeDir(e.path), set = used.get(dir) || new Set(); used.set(dir, set);
     let n = e.out.name; const base = n.replace(/\.[^.]+$/, ""), ext = n.slice(base.length); let i = 2;
     while (set.has(n.toLowerCase())) n = `${base}-${i++}${ext}`; set.add(n.toLowerCase());
-    z[(dir ? dir + "/" : "") + n] = [new Uint8Array(await e.out.blob.arrayBuffer()), { level: 0, mtime }];
+    list.push({ name: (dir ? dir + "/" : "") + n, blob: e.out.blob, date });
   }
-  if (withAudit) { z["sanitisation-audit.csv"] = [strToU8(auditCsv(entries)), { level: 6, mtime }]; z["sanitisation-audit.json"] = [strToU8(auditJson(entries)), { level: 6, mtime }]; }
-  return new Blob([zipSync(z)], { type: "application/zip" });
+  if (withAudit) { list.push({ name: "sanitisation-audit.csv", text: auditCsv(entries), date, level: 6 }, { name: "sanitisation-audit.json", text: auditJson(entries), date, level: 6 }); }
+  return zipBlobs(list);
 }

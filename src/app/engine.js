@@ -91,10 +91,10 @@ export async function readMany(items, onChunk) {
   }
   return res;
 }
-/** jobs [{id, blob, name, tags}] -> Map(id -> Uint8Array | Error) */
+/** jobs [{id, blob, name, tags}] -> Map(id -> Blob | Error) */
 export async function writeMany(jobs, onChunk) {
   const res = new Map();
-  for (const part of chunks(jobs, 25, 400e6)) {
+  for (const part of chunks(jobs, 25, 120e6)) { // small byte budget per run: each output is held in memory until it becomes a Blob
     await serial(async () => {
       await loadEngine();
       const lines = [], files = [], outs = [];
@@ -113,8 +113,9 @@ export async function writeMany(jobs, onChunk) {
         outs.push(out); j._in = inp; j._out = out;
       }
       files.push({ path: "/args.txt", data: new File([lines.join("\n") + "\n"], "args.txt") });
-      const r = await (await lib()).runBatch(files, ["-@", "/args.txt"], wfetch, outs);
-      for (const j of part) res.set(j.id, !hardErr(r.err, j._in) && r.outs[j._out] && r.outs[j._out].length ? r.outs[j._out] : new Error(errFor(r.err, j._in)));
+      // outputs come back as Blobs: the browser keeps those outside the page's own memory, which matters for videos on phones
+      const r = await (await lib()).runBatch(files, ["-@", "/args.txt"], wfetch, outs, true);
+      for (const j of part) res.set(j.id, !hardErr(r.err, j._in) && r.outs[j._out] && r.outs[j._out].size ? r.outs[j._out] : new Error(errFor(r.err, j._in)));
     });
     onChunk && onChunk(res.size);
   }

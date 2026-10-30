@@ -55,9 +55,13 @@ export function addFiles(list) {
   const files = [...list].filter((f) => !f.name.startsWith(".") && f.size > 0);
   const fresh = files.filter((f) => !known.has((f.webkitRelativePath || f.name) + "|" + f.size));
   const unsupported = fresh.filter((f) => !SUPPORTED.test(f.name) && !/\.(dng|cr2|cr3|nef|arw|orf|rw2|raf|gif)$/i.test(f.name));
+  const phone = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   for (const f of fresh) {
     if (unsupported.includes(f)) continue;
-    E.push(newEntry(f, nextId++));
+    const e = newEntry(f, nextId++);
+    // a phone browser has far less memory than a computer: very large files can get the tab closed
+    if (phone && f.size > 400 * 1048576) { e.state = "unsupported"; e.msg = "This file is over 400 MB, more than a phone browser can rewrite safely. Use a computer for this one."; }
+    E.push(e);
   }
   const skipped = unsupported.length;
   render();

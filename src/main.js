@@ -1,5 +1,5 @@
 // Metadata Fixer - application shell and UI.
-import { zipSync } from "fflate";
+import { zipBlobs } from "./app/zipstream.js";
 import { CONFIG } from "./config.js";
 import { S, MONTHS, PHOTO, VIDEO, newItem, rezone, dateCands, locCands, autopick, applyAiTop, plan, status, STATUS_LABEL, warnings, describe, itemZone, zoneLabel, monthCtx, rangeCtx, inCtxDate, inCtxArea, zoneAt } from "./app/model.js";
 import { human, exif, parseStamp, naive } from "./core/time.js";
@@ -426,12 +426,13 @@ $("#btn-context").onclick = openContext;
 /* ------------------------------------------------------------------ export */
 const snapshot = () => ({ settings: { ...S.settings }, ctx: JSON.parse(JSON.stringify(S.ctx)) });
 const mime = (n) => (/\.mp4$/i.test(n) ? "video/mp4" : /\.(mov|qt)$/i.test(n) ? "video/quicktime" : /\.m4v$/i.test(n) ? "video/x-m4v" : /\.png$/i.test(n) ? "image/png" : /\.(heic|heif)$/i.test(n) ? "image/heic" : /\.webp$/i.test(n) ? "image/webp" : /\.tiff?$/i.test(n) ? "image/tiff" : /\.dng$/i.test(n) ? "image/x-adobe-dng" : "image/jpeg");
-const fileOf = (o) => new File([o.bytes], o.name, { type: mime(o.name), lastModified: o.mt });
+const fileOf = (o) => new File([o.blob], o.name, { type: mime(o.name), lastModified: o.mt });
 function downloadBlob(blob, name) { const u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 120000); }
 function nowStamp() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 
 const fsName = (it) => (it.realExt ? it.name.replace(/\.[^.]*$/, "") + "." + it.realExt : it.name);
 const exportList = () => S.items.filter((x) => !x.out && x.exState === "done" && (status(x) === "ready" || fixFor(x)));
+const PHONE_MAX = 400 * 1048576;
 async function exportReady() {
   const list = exportList();
   if (!list.length) return openExport();
@@ -453,19 +454,26 @@ async function exportReady() {
     used.add(key.toLowerCase());
     jobs.push({ it, p, b, fix, name, key, mt: p.t != null ? p.t - (p.off || 0) * 60000 : Date.now() });
   }
+  // A phone browser has far less memory than a computer: rewriting a very large video there can get the tab closed.
+  const phone = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  for (const j of jobs.filter((x) => phone && x.it.size > PHONE_MAX)) {
+    j.it.out = { ok: false, diffs: [`This file is over ${Math.round(PHONE_MAX / 1048576)} MB, more than a phone browser can rewrite safely. Open Metadata Fixer on a computer for this one.`], blob: null, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
+    j.it.ready = false; updateTile(j.it);
+  }
+  jobs.splice(0, jobs.length, ...jobs.filter((x) => !x.it.out));
   let done = 0;
   for (let i = 0; i < jobs.length; i += 25) {
     const part = jobs.slice(i, i + 25);
     setStatus(`Writing and verifying ${done + 1}-${done + part.length} of ${jobs.length}...`);
     let written = new Map(), back = new Map();
     try { written = await writeMany(part.map((j) => ({ id: j.it.id, blob: j.it.file, name: fsName(j.it), tags: j.b.tags, clean: !!S.settings.clean }))); } catch (e) { for (const j of part) written.set(j.it.id, e); }
-    const okW = part.filter((j) => written.get(j.it.id) instanceof Uint8Array);
-    try { back = await readMany(okW.map((j) => ({ id: j.it.id, blob: new Blob([written.get(j.it.id)]), name: fsName(j.it) }))); } catch (e) { for (const j of okW) back.set(j.it.id, e); }
+    const okW = part.filter((j) => written.get(j.it.id) instanceof Blob);
+    try { back = await readMany(okW.map((j) => ({ id: j.it.id, blob: written.get(j.it.id), name: fsName(j.it) }))); } catch (e) { for (const j of okW) back.set(j.it.id, e); }
     for (const j of part) {
       const w = written.get(j.it.id), r = back.get(j.it.id);
-      if (!(w instanceof Uint8Array)) j.it.out = { ok: false, diffs: [(w && w.message) || "Write failed"], bytes: null, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
-      else if (!r || r instanceof Error) j.it.out = { ok: false, diffs: ["Could not read the written file back: " + ((r && r.message) || "unknown")], bytes: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
-      else { const v = verify(r, j.b.expect), extra = await verifyFix(j.it, j.fix, r, new Blob([w])); j.it.out = { ok: v.ok && !extra.length, diffs: [...v.diffs, ...extra], bytes: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p, fix: j.fix }; }
+      if (!(w instanceof Blob)) j.it.out = { ok: false, diffs: [(w && w.message) || "Write failed"], blob: null, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
+      else if (!r || r instanceof Error) j.it.out = { ok: false, diffs: ["Could not read the written file back: " + ((r && r.message) || "unknown")], blob: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p };
+      else { const v = verify(r, j.b.expect), extra = await verifyFix(j.it, j.fix, r, w); j.it.out = { ok: v.ok && !extra.length, diffs: [...v.diffs, ...extra], blob: w, name: j.name, dir: j.it.dir, key: j.key, summary: j.b.summary, mt: j.mt, plan: j.p, fix: j.fix }; }
       j.it.ready = false; updateTile(j.it);
     }
     done += part.length; $("#prog").value = done;
@@ -502,7 +510,7 @@ function openExport() {
   const d = $("#dlg-export"); if (!d.open) d.showModal();
   const sh = $("#x-share"); if (sh) sh.onclick = async () => { try { await navigator.share({ files }); toast("Shared."); } catch (e) { if (e.name !== "AbortError") toast("Sharing didn't work here. Use Download instead.", 5000); } };
   const sv = $("#x-save"); if (sv) sv.onclick = async () => { for (let i = 0; i < good.length; i++) { downloadBlob(files[i], good[i].out.name); await new Promise((r) => setTimeout(r, 350)); } toast(`${plural(good.length, "download")} started.`); };
-  const zp = $("#x-zip"); if (zp) zp.onclick = () => { const z = {}; for (const x of good) z[x.out.key] = [x.out.bytes, { level: 0, mtime: new Date(x.out.mt) }]; downloadBlob(new Blob([zipSync(z)], { type: "application/zip" }), `${nowStamp()}_metadata-fixed.zip`); };
+  const zp = $("#x-zip"); if (zp) zp.onclick = async () => { zp.disabled = true; try { downloadBlob(await zipBlobs(good.map((x) => ({ name: x.out.key, blob: x.out.blob, mt: x.out.mt }))), `${nowStamp()}_metadata-fixed.zip`); } catch (e) { toast("The ZIP couldn't be made here. Download the files one by one.", 6000); } finally { zp.disabled = false; } };
   $("#x-csv") && ($("#x-csv").onclick = () => downloadBlob(new Blob(["﻿" + auditCsv()], { type: "text/csv" }), `${nowStamp()}_metadata-audit.csv`));
   body.querySelectorAll("[data-sh]").forEach((b) => (b.onclick = async () => { try { await navigator.share({ files: [files[+b.dataset.sh]] }); } catch (e) { if (e.name !== "AbortError") toast("Sharing didn't work here. Use Save instead."); } }));
   body.querySelectorAll("[data-dl]").forEach((b) => (b.onclick = () => downloadBlob(files[+b.dataset.dl], good[+b.dataset.dl].out.name)));
@@ -779,7 +787,7 @@ async function resumeNow() {
         it.exState = "done";
         if (x.exRaw) { it.exRaw = x.exRaw; it.ex = interpretExisting(x.exRaw, it.kind); it.realExt = realExt(it.ex.fileExt, it.name); } else it.ex = { date: null, gps: null, device: null };
       }
-      if (m.out && x.bytes) { it.out = { ok: m.out.ok, diffs: m.out.diffs, bytes: x.bytes, name: m.out.name, dir: m.out.dir, key: m.out.key, summary: m.out.summary, mt: m.out.mt, plan: m.out.plan }; session.tagOut(it.out, m.out.ver); }
+      if (m.out && x.blob) { it.out = { ok: m.out.ok, diffs: m.out.diffs, blob: x.blob, name: m.out.name, dir: m.out.dir, key: m.out.key, summary: m.out.summary, mt: m.out.mt, plan: m.out.plan }; session.tagOut(it.out, m.out.ver); }
       it.side = S.match ? S.match(it.name) : null;
       idMap.set(m.cid, it); made.push(it);
     }

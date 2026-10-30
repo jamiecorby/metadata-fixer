@@ -1,4 +1,5 @@
 // Generates src/vendor/exiftool.js: the @uswriting/exiftool wrapper plus a batch runner that
+import "./patch-zeroperl.mjs";
 // executes many files (or many -execute commands from an argfile) in ONE Perl run.
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 let s = readFileSync("node_modules/@uswriting/exiftool/dist/esm/index.js", "utf8");
@@ -6,7 +7,7 @@ s = s.replace(/\n?\/\/# sourceMappingURL=.*$/s, "");
 const exp = "export{W as writeMetadata,D as parseMetadata,_ as dispose}";
 if (!s.includes(exp) || !/async function T\(\$\)/.test(s)) throw new Error("exiftool wrapper layout changed; update scripts/vendor.mjs");
 const batch = `
-async function runBatch(files,args,fetchFn,outPaths){let{perl:e,fileSystem:i}=await T(fetchFn),n=[];c.clear(),m.clear(),await e.reset();try{for(const f of files){i.addFile(f.path,f.data);n.push(f.path)}let s=await e.runFile("/exiftool",args);e.flush();const outs={};for(const p of outPaths||[]){const r=i.lookup(p);if(r&&r.type==="file"){outs[p]=r.content instanceof Blob?new Uint8Array(await r.content.arrayBuffer()):new Uint8Array(r.content.buffer.slice(r.content.byteOffset,r.content.byteOffset+r.content.byteLength))}n.push(p)}return{ok:s.success&&s.exitCode===0,exitCode:s.exitCode,out:c.toString(),err:m.toString(),outs}}finally{v(i,n)}}
+async function runBatch(files,args,fetchFn,outPaths,asBlob){let{perl:e,fileSystem:i}=await T(fetchFn),n=[];c.clear(),m.clear(),await e.reset();try{for(const f of files){i.addFile(f.path,f.data);n.push(f.path)}let s=await e.runFile("/exiftool",args);e.flush();const outs={};for(const p of outPaths||[]){const r=i.lookup(p);if(r&&r.type==="file"){outs[p]=asBlob?(r.content instanceof Blob?r.content:new Blob([r.content])):r.content instanceof Blob?new Uint8Array(await r.content.arrayBuffer()):new Uint8Array(r.content.buffer.slice(r.content.byteOffset,r.content.byteOffset+r.content.byteLength))}n.push(p)}return{ok:s.success&&s.exitCode===0,exitCode:s.exitCode,out:c.toString(),err:m.toString(),outs}}finally{v(i,n)}}
 `;
 s = s.replace(exp, batch + "export{W as writeMetadata,D as parseMetadata,_ as dispose,runBatch}");
 mkdirSync("src/vendor", { recursive: true });

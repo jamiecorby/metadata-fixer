@@ -14,16 +14,19 @@ async function decodable(it) {
 }
 async function videoFrame(file) {
   const u = URL.createObjectURL(file), v = document.createElement("video");
-  v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = u;
+  v.muted = true; v.playsInline = true; v.preload = "metadata"; v.src = u;
   try {
-    await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error("This browser can't decode this video")); setTimeout(() => rej(new Error("timeout")), 10000); });
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error("This browser can't decode this video")); setTimeout(() => rej(new Error("timeout")), 10000); });
     v.currentTime = Math.min(1, (v.duration || 2) / 3);
-    await new Promise((r) => { v.onseeked = r; setTimeout(r, 2000); });
+    await new Promise((r) => { v.onseeked = r; setTimeout(r, 4000); });
+    if (v.readyState < 2) await new Promise((r) => { v.onloadeddata = r; setTimeout(r, 3000); });
     const c = document.createElement("canvas"), s = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
     c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s);
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-    return await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88));
-  } finally { URL.revokeObjectURL(u); }
+    const out = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88));
+    c.width = c.height = 0;
+    return out;
+  } finally { v.removeAttribute("src"); try { v.load(); } catch (e) {} URL.revokeObjectURL(u); }
 }
 async function scaled(src, max, q = 0.82) {
   const bmp = await createImageBitmap(src);

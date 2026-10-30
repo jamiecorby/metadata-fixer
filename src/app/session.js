@@ -64,7 +64,7 @@ async function tick(force) {
       if (it.out) {
         let n = outVer.get(it.out); if (!n) { n = ++verN; outVer.set(it.out, n); }
         const ok = `r:${it.cid}:out:${n}`; want.add(ok);
-        const o = it.out, kept = o.bytes ? await ensure(ok, () => new Blob([o.bytes]), o.bytes.byteLength || o.bytes.size || 0) : false;
+        const o = it.out, kept = o.blob ? await ensure(ok, () => o.blob, o.blob.size) : false;
         m.out = { ok: o.ok, diffs: o.diffs, name: o.name, dir: o.dir, key: o.key, summary: o.summary, mt: o.mt, plan: o.plan, ver: n, kept };
       }
       ritems.push(m);
@@ -134,8 +134,8 @@ export async function load(sess) {
     const items = [];
     for (const m of sess.recover.items) {
       const blob = await C.get(`r:${m.cid}:src`); if (!blob) { out.missing++; continue; }
-      const rec = { m, file: asFile(blob, m), exRaw: m.hasEx ? (await C.get(`r:${m.cid}:ex`)) || null : null, bytes: null };
-      if (m.out && m.out.kept) { const b = await C.get(`r:${m.cid}:out:${m.out.ver}`); if (b) rec.bytes = new Uint8Array(await b.arrayBuffer()); else m.out = null; }
+      const rec = { m, file: asFile(blob, m), exRaw: m.hasEx ? (await C.get(`r:${m.cid}:ex`)) || null : null, blob: null };
+      if (m.out && m.out.kept) { const b = await C.get(`r:${m.cid}:out:${m.out.ver}`); if (b) rec.blob = b; else m.out = null; }
       else if (m.out) m.out = null;
       used += m.size; items.push(rec);
     }
