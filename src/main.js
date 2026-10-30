@@ -175,6 +175,9 @@ function renderBar() {
   $("#b-ai").textContent = `AI suggest${aiT.length ? " (" + aiT.length + ")" : ""}`; $("#b-ai").disabled = !aiT.length;
   $("#b-ready").textContent = `Mark ready${rdT.length ? " (" + rdT.length + ")" : ""}`; $("#b-ready").disabled = !rdT.length;
   $("#b-export").textContent = c.ready ? `Export (${c.ready})` : "Check authenticity"; $("#b-export").disabled = !c.ready && !S.items.some((x) => !x.out && x.exState === "done");
+  // exported files stay reachable: after the share sheet, a reload or Resume, this is the way back to Save / Download
+  const exported = S.items.filter((x) => x.out && x.out.ok).length;
+  $("#b-saved").hidden = !exported; $("#b-saved").textContent = `Save exported (${exported})`;
   const loading = S.items.filter((x) => x.exState === "pending").length;
   setStatus(loading ? `Reading metadata... ${S.items.length - loading} of ${S.items.length}` : `${plural(S.items.length, "file")} . ${c.needs} need info . ${c.review} to review . ${c.ready} ready${sel.length > 1 ? ` . <b>${sel.length} selected</b>` : ""}`);
 }
@@ -516,6 +519,7 @@ function openExport() {
   body.querySelectorAll("[data-dl]").forEach((b) => (b.onclick = () => downloadBlob(files[+b.dataset.dl], good[+b.dataset.dl].out.name)));
 }
 $("#b-export").onclick = () => startExport();
+$("#b-saved").onclick = () => openExport();
 
 /* ------------------------------------------------------------------ authenticity check (the step before export) */
 async function startExport() {
@@ -714,9 +718,10 @@ addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.t
 let sanMod = null;
 async function setMode(m) {
   const san = m === "sanitise"; document.body.dataset.mode = m;
+  if (san) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.mount({ recoverFiles: () => S.items.map((x) => x.file), toRecover: handOff }); }   // the screen appears only once it works
   $("#sanitise").hidden = !san; $("#btn-mode").textContent = san ? "Recover dates and places" : "Sanitise files";
   const has = S.items.length > 0; $("#landing").hidden = san || has; $("#work").hidden = san || !has; $("#bar").hidden = san || !has;
-  if (san) { sanMod = sanMod || (await import("./app/sanui.js")); sanMod.mount({ recoverFiles: () => S.items.map((x) => x.file), toRecover: handOff }); scrollTo(0, 0); }
+  if (san) scrollTo(0, 0);
 }
 $("#btn-mode").onclick = () => setMode(document.body.dataset.mode === "sanitise" ? "recover" : "sanitise");
 const routeFiles = (files) => (document.body.dataset.mode === "sanitise" && sanMod ? sanMod.addFiles(files) : addFiles(files));
@@ -800,7 +805,8 @@ async function resumeNow() {
   }
   await setMode(data.mode === "sanitise" && data.san ? "sanitise" : "recover");
   session.hold(false);
-  toast(data.missing ? `Restored. ${plural(data.missing, "file")} couldn't be found in the saved copy.` : "Restored. Carry on from where you were.");
+  const exp = S.items.filter((x) => x.out && x.out.ok).length;
+  toast(data.missing ? `Restored. ${plural(data.missing, "file")} couldn't be found in the saved copy.` : exp ? `Restored. Your ${plural(exp, "exported file")} ${exp === 1 ? "is" : "are"} ready: press Save exported.` : "Restored. Carry on from where you were.", exp ? 6000 : 3200);
 }
 function savedChip() { session.present().then((p) => { $("#clear-cache").hidden = !p; }).catch(() => {}); }
 $("#clear-cache").onclick = async () => { await session.discard(); $("#clear-cache").hidden = true; toast("Saved work cleared from this browser. What's open on screen is unchanged."); };
