@@ -16,7 +16,9 @@ def check(name, ok, info=""):
 async def until(pg, js, secs=240):
     t = time.time()
     while time.time() - t < secs:
-        if await pg.evaluate(js): return True
+        try:
+            if await pg.evaluate(js): return True
+        except Exception: pass  # the app may still be starting (boot.js loads it after first paint)
         await asyncio.sleep(0.3)
     raise Exception("timeout waiting for " + js)
 DONE = "(!document.querySelector('.san-chip.work') && !document.querySelector('#san-go').textContent.includes('Working') && document.querySelector('#san-go').disabled)"

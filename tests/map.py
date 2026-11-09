@@ -10,7 +10,7 @@ async def main():
     pg.on("console",lambda m: print("CONSOLE",m.text)); errs=[]; pg.on("pageerror",lambda e:errs.append(str(e)+" @ "+str(e.stack)[:600]))
     await pg.goto("http://127.0.0.1:8772/index.html")
     await pg.set_input_files("#pick",[os.path.join(ROOT,"tests/fixtures/IMG_1234.JPG"),os.path.join(ROOT,"tests/fixtures/plain.png")])
-    await pg.wait_for_function("window.__mf.S.items.every(x=>x.exState==='done')",timeout=120000)
+    await pg.wait_for_function("window.__mf && window.__mf.S.items.every(x=>x.exState==='done')",timeout=120000)
     await pg.click("#btn-context"); await pg.select_option("#cx-month","7"); await pg.fill("#cx-year","2019")
     await pg.click("#cx-area-pick"); await pg.wait_for_selector("#dlg-map[open]")
     await pg.fill("#map-q","Lisbon"); await pg.click("#map-go"); await pg.wait_for_selector("#map-results .res",timeout=20000)

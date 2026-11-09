@@ -19,7 +19,9 @@ def add(sev, where, msg): found.append((sev, where, msg)); print(f"  [{sev}] {wh
 async def until(pg, js, secs=120):
     t = time.time()
     while time.time() - t < secs:
-        if await pg.evaluate(js): return True
+        try:
+            if await pg.evaluate(js): return True
+        except Exception: pass  # the app may still be starting (boot.js loads it after first paint)
         await asyncio.sleep(0.25)
     raise Exception("timeout waiting for " + js)
 async def shot(pg, name):

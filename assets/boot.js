@@ -1,8 +1,14 @@
-// Starts the app once the page has painted and its fonts have arrived, so on a slow connection the text appears first
-// and the app script does not compete with it for bandwidth.
-let started = false;
-const go = () => { if (started) return; started = true; import("./main.js?v=64397f59ce"); };
-if (document.readyState === "complete") go(); else { addEventListener("load", go, { once: true }); setTimeout(go, 3000); }
+// Starts the app once the page has loaded (fonts included) and its main content has been painted, so on a slow
+// connection the text appears first and the app script does not compete with it for bandwidth. 3 s at the latest.
+let started = false, loaded = document.readyState === "complete", painted = false;
+const go = () => { if (started) return; started = true; import("./main.js?v=0de9034c16"); };
+const ready = () => { if (loaded && painted) requestAnimationFrame(() => setTimeout(go, 0)); };
+try {
+  if (!PerformanceObserver.supportedEntryTypes.includes("largest-contentful-paint")) throw 0; // e.g. Safari: load + one frame
+  new PerformanceObserver((list) => { if (list.getEntries().length) { painted = true; ready(); } }).observe({ type: "largest-contentful-paint", buffered: true });
+} catch (e) { painted = true; }
+if (!loaded) addEventListener("load", () => { loaded = true; ready(); }, { once: true });
+ready(); setTimeout(go, 3000);
 
 // Until the app is running, nothing the visitor does is lost: a drop zone still opens the file chooser, and files that
 // are chosen or dropped are kept for the app (a dropped file is never opened by the browser instead).

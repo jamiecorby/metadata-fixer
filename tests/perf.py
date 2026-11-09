@@ -11,7 +11,7 @@ async def main():
     await pg.goto("http://127.0.0.1:8771/index.html")
     files=sorted(glob.glob(os.path.join(ROOT,"tests/out/bulk/*.jpg")))
     t0=time.time(); await pg.set_input_files("#pick",files)
-    await pg.wait_for_function("window.__mf.S.items.length===200 && window.__mf.S.items.every(x=>x.exState==='done')",timeout=600000)
+    await pg.wait_for_function("window.__mf && window.__mf.S.items.length===200 && window.__mf.S.items.every(x=>x.exState==='done')",timeout=600000)
     t1=time.time(); print(f"read 200 files: {t1-t0:.1f}s")
     lat=await pg.evaluate("""async()=>{const tiles=[...document.querySelectorAll('#grid .tile')];const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));const out={};
       let t=performance.now(); tiles[5].click(); await raf(); out.click=performance.now()-t;

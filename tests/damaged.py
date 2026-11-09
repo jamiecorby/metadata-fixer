@@ -20,7 +20,7 @@ async def main():
         plain, mp4 = rd("plain.jpg"), rd("plain.mp4")
         pay = [("garbage.jpg", bytes(range(256)) * 20), ("really_png.jpg", rd("plain.png")), ("trunc.mp4", mp4[:900]), ("text.jpg", b"hello world, not an image"), ("trunc.jpg", plain[:600]), ("IMG_20200101_120000.jpg", plain)]
         await pg.set_input_files("#pick", [{"name": n, "mimeType": "application/octet-stream", "buffer": d} for n, d in pay])
-        await pg.wait_for_function("window.__mf.S.items.length===6 && window.__mf.S.items.every(x=>x.exState==='done')", timeout=120000)
+        await pg.wait_for_function("window.__mf && window.__mf.S.items.length===6 && window.__mf.S.items.every(x=>x.exState==='done')", timeout=120000)
         info = await pg.evaluate("Object.fromEntries(window.__mf.S.items.map(x=>[x.name,{issue:x.ex&&x.ex.issue,real:x.realExt||null}]))")
         check("garbage flagged", bool(info["garbage.jpg"]["issue"]), info["garbage.jpg"])
         check("text file flagged as not a photo", "isn't a photo" in (info["text.jpg"]["issue"] or ""), info["text.jpg"])

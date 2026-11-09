@@ -16,7 +16,9 @@ def check(name, ok, info=""):
 async def until(pg, js, secs=120):
     t = time.time()
     while time.time() - t < secs:
-        if await pg.evaluate(js): return True
+        try:
+            if await pg.evaluate(js): return True
+        except Exception: pass  # the app may still be starting (boot.js loads it after first paint)
         await asyncio.sleep(0.25)
     raise Exception("timeout waiting for " + js)
 FLUSH = "window.__mf.session.flush()"

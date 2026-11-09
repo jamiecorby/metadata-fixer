@@ -43,7 +43,7 @@ async def main():
         await pg.screenshot(path=f"{OUT}/desk_landing.png", full_page=True)
         await pg.set_input_files("#pick", [os.path.join(FX, f) for f in FILES])
         await pg.wait_for_selector("#work:not([hidden])")
-        await pg.wait_for_function("window.__mf.S.items.length && window.__mf.S.items.every(x => x.exState === 'done')", timeout=240000)
+        await pg.wait_for_function("window.__mf && window.__mf.S.items.length && window.__mf.S.items.every(x => x.exState === 'done')", timeout=240000)
         await pg.wait_for_timeout(500)
         n = await pg.evaluate("window.__mf.S.items.length")
         check("12 media files loaded (txt skipped, sidecars attached)", n == 12, n)
@@ -60,7 +60,7 @@ async def main():
         # neighbours suggestion for IMG_1234 then AI via own key
         await pg.click("#btn-settings"); await pg.fill("#s-key", "sk-ant-test-0000"); await pg.click("#s-keysave"); await pg.keyboard.press("Escape")
         await pg.click(".tile:has-text('IMG_1234.JPG')")
-        await pg.click("#i-ai"); await pg.wait_for_function("window.__mf.S.items.find(x=>x.name==='IMG_1234.JPG').ai", timeout=30000); await pg.wait_for_timeout(300)
+        await pg.click("#i-ai"); await pg.wait_for_function("window.__mf && window.__mf.S.items.find(x=>x.name==='IMG_1234.JPG').ai", timeout=30000); await pg.wait_for_timeout(300)
         r = await st(pg, "IMG_1234.JPG"); check("AI applied as review with Lisbon zone", r["src"] == "ai" and r["lsrc"] == "ai" and r["off"] == 60 and r["s"] == "review", r)
         await pg.screenshot(path=f"{OUT}/desk_inspector.png")
         # manual edit validation: invalid date ignored, valid date applied
@@ -111,7 +111,7 @@ async def main():
         await mp.goto(BASE); await mp.screenshot(path=f"{OUT}/m_landing.png", full_page=True)
         ov = await mp.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"); check("mobile landing no h-scroll", ov <= 0, ov)
         await mp.set_input_files("#pick", [os.path.join(FX, f) for f in ["IMG_20190704_143000.jpg", "IMG_1234.JPG", "plain.png", "IMG_5000.jpg", "IMG_5000.jpg.supplemental-metadata.json"]])
-        await mp.wait_for_function("window.__mf.S.items.every(x => x.exState === 'done')", timeout=240000); await mp.wait_for_timeout(600)
+        await mp.wait_for_function("window.__mf && window.__mf.S.items.every(x => x.exState === 'done')", timeout=240000); await mp.wait_for_timeout(600)
         await mp.screenshot(path=f"{OUT}/m_grid.png")
         ov = await mp.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"); check("mobile grid no h-scroll", ov <= 0, ov)
         await mp.tap(".tile:has-text('IMG_1234.JPG')"); await mp.wait_for_timeout(400)

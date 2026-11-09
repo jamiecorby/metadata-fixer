@@ -21,10 +21,10 @@ const FONTS = [["sans", 400], ["sans", 500], ["sans", 600], ["sans", 700], ["mon
 let faces = "";
 for (const [fam, w] of FONTS) {
   const file = `ibm-plex-${fam}-latin-${w}-normal.woff2`;
-  copyFileSync(`node_modules/@fontsource/ibm-plex-${fam}/files/${file}`, "assets/fonts/" + file);
-  faces += `@font-face{font-family:"IBM Plex ${fam === "sans" ? "Sans" : "Mono"}";font-style:normal;font-weight:${w};font-display:swap;src:url(fonts/${file}) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}\n`;
+  copyFileSync("src/fonts/" + file, "assets/fonts/" + file); // subset by scripts/subset-fonts.py
+  faces += `@font-face{font-family:"IBM Plex ${fam === "sans" ? "Sans" : "Mono"}";font-style:normal;font-weight:${w};font-display:swap;src:url(fonts/${file}) format("woff2");unicode-range:U+0020-007E,U+00A0-00FF,U+2010-2027,U+2190-2193,U+20AC,U+2122}\n`;
 }
-copyFileSync("node_modules/@fontsource/ibm-plex-sans/LICENSE", "assets/fonts/LICENSE-IBM-Plex.txt");
+copyFileSync("src/fonts/LICENSE-IBM-Plex.txt", "assets/fonts/LICENSE-IBM-Plex.txt");
 writeFileSync("assets/app.css", faces + readFileSync("src/styles.css", "utf8"));
 copyFileSync("src/icon.svg", "assets/icon.svg");
 const main = readFileSync("assets/main.js");
