@@ -21,6 +21,7 @@ const suites = [
   ["browser: saved work and resume", "python3", ["-W", "ignore", "tests/cache.py"]],
   ["browser: phone limits", "python3", ["-W", "ignore", "tests/phone.py"]],
   ["browser: content security policy", "python3", ["-W", "ignore", "tests/csp.py"]],
+  ["browser: UI/UX conformance (WCAG 2.2 AA, targets, focus, keyboard)", "python3", ["-W", "ignore", "tests/ux.py"]],
 ];
 if (process.env.PERF) suites.push(["browser: 200-file performance", "python3", ["-W", "ignore", "tests/perf.py"]]);
 let bad = 0;

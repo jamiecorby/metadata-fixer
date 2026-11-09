@@ -705,6 +705,17 @@ $("#btn-account").onclick = () => openAccount(acct.user ? "account" : "signin");
 $("#lnk-pricing").onclick = (e) => { if (!$("#landing").hidden) return; e.preventDefault(); openAccount(acct.user ? "buy" : "signin"); };
 $("#lnk-support").href = CONFIG.supportUrl;
 
+/* ------------------------------------------------------------------ layout metrics and keyboard access */
+{ const root = document.documentElement.style, top = $(".top"), bar = $("#bar");
+  const measure = () => { root.setProperty("--hh", Math.round(top.getBoundingClientRect().height) + "px"); root.setProperty("--bh", bar.hidden ? "0px" : Math.round(bar.getBoundingClientRect().height) + "px"); };
+  if (window.ResizeObserver) { const ro = new ResizeObserver(measure); ro.observe(top); ro.observe(bar); }
+  addEventListener("resize", measure); measure();
+  new MutationObserver(measure).observe(bar, { attributes: true, attributeFilter: ["hidden"] }); }
+/* a drop zone is a button: Enter or Space opens the file chooser */
+const openPicker = (d) => { const inp = document.getElementById(d.dataset.for); if (inp) inp.click(); };
+document.addEventListener("click", (e) => { const d = e.target.closest && e.target.closest(".drop"); if (d) openPicker(d); });
+document.addEventListener("keydown", (e) => { const d = e.target && e.target.classList && e.target.classList.contains("drop") ? e.target : null; if (d && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openPicker(d); } });
+
 /* ------------------------------------------------------------------ input wiring */
 $("#pick").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
 $("#dirpick").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -745,6 +756,7 @@ addEventListener("keydown", (e) => {
   else if (e.key === "a" && it && status(it) === "review") { it.ready = true; refresh(it); const nx = vis.find((x, j) => j > i && status(x) === "review"); if (nx) focusItem(nx, false); }
   else if (e.key === "s" && it) runAI([it]);
   else if (e.key === " " && it) { e.preventDefault(); if (S.sel.has(it.id) && S.sel.size > 1) S.sel.delete(it.id); else S.sel.add(it.id); selChanged(); }
+  else if (e.key === "Escape" && document.body.classList.contains("sheet")) { S.insOpen = false; $("#insp").classList.remove("open"); document.body.classList.remove("sheet"); const t = S.focus && tiles.get(S.focus); if (t) t.focus({ preventScroll: true }); }
   else if (e.key === "Escape") { S.sel = new Set(S.focus ? [S.focus] : []); S.selectMode = false; $("#selmode").setAttribute("aria-pressed", "false"); $("#selmode").textContent = "Select"; selChanged(); }
   else if (e.key === "?") $("#dlg-help").showModal();
 });

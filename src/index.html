@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Metadata Fixer - restore dates and places on photos and videos</title>
+<title>Metadata Fixer - restore photo and video dates</title>
 <meta name="description" content="Lost the dates and locations on your photos and videos? Metadata Fixer recovers them from file names, Google Takeout and the pictures themselves, then writes them back the way Apple Photos and Google Photos read them. Runs in your browser - your files are never uploaded.">
 <meta property="og:title" content="Metadata Fixer">
 <meta property="og:description" content="Restore dates, places and device details on photos and videos. Private: runs in your browser.">
@@ -16,6 +16,7 @@
 <script type="module" src="assets/main.js?v=__V__"></script>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="top">
   <a class="brand" href="./" aria-label="Metadata Fixer home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>Metadata Fixer</span></a>
   <span class="chip engine" id="engine" hidden></span>
@@ -29,7 +30,7 @@
 </header>
 
 <div id="resume" class="resume" role="region" aria-label="Unfinished work" hidden></div>
-<main>
+<main id="main" tabindex="-1">
 <section id="landing">
   <div class="hero">
     <div class="hero-copy">
@@ -41,13 +42,15 @@
         <li><b>Verified.</b> Every file is read back after writing and checked.</li>
       </ul>
     </div>
-    <label class="drop big" id="drop" for="pick">
+    <div class="hero-drop">
+    <div class="drop big" id="drop" data-for="pick" tabindex="0" role="button" aria-describedby="drop-hint">
       <span class="drop-icon" aria-hidden="true"></span>
       <b>Drop photos and videos here</b>
       <span>or tap to choose files</span>
-      <small>JPEG, HEIC, PNG, TIFF, DNG, MP4, MOV . include Google Takeout .json and .xmp sidecars</small>
-    </label>
+      <small id="drop-hint">JPEG, HEIC, PNG, TIFF, DNG, MP4, MOV . include Google Takeout .json and .xmp sidecars</small>
+    </div>
     <div class="drop-alt"><button id="pickdir" class="ghost">Choose a whole folder</button></div>
+    </div>
   </div>
   <div class="how">
     <div><span class="n">1</span><h2>Add files</h2><p>Folders and Google Takeout exports work. Existing metadata is read first, so nothing good is lost.</p></div>
@@ -88,7 +91,7 @@
   <div class="san">
     <h1 id="san-h">Sanitise files</h1>
     <p class="lead">Remove embedded metadata and other non-essential data from photos and videos. Files are processed in your browser and never uploaded. Your originals are not changed: you get new files.</p>
-    <label class="drop" id="san-drop" for="san-pick"><b>Drop files here</b><span>or tap to choose files</span><small>JPEG, PNG, WebP, TIFF, HEIC/HEIF/AVIF, MP4, MOV. RAW files are not supported.</small></label>
+    <div class="drop" id="san-drop" data-for="san-pick" tabindex="0" role="button" aria-describedby="san-drop-hint"><b>Drop files here</b><span>or tap to choose files</span><small id="san-drop-hint">JPEG, PNG, WebP, TIFF, HEIC/HEIF/AVIF, MP4, MOV. RAW files are not supported.</small></div>
     <input id="san-pick" type="file" multiple accept="image/*,video/*,.heic,.heif,.avif,.mov,.mp4,.m4v,.tif,.tiff" hidden>
     <input id="san-dirpick" type="file" webkitdirectory multiple hidden>
     <div class="san-alt"><button class="ghost" id="san-dir">Choose a folder</button><button class="ghost" id="san-from" hidden></button></div>
@@ -150,7 +153,7 @@
 <dialog id="dlg-map" class="dlg wide">
   <header><h2 id="map-title">Choose a location</h2><button class="x" id="map-cancel" type="button" aria-label="Close">&times;</button></header>
   <div class="dlg-body">
-    <div class="rowx"><input id="map-q" type="search" placeholder="Search a place, e.g. Lisbon or Eiffel Tower" autocomplete="off" style="flex:1 1 200px"><button type="button" id="map-go">Search</button></div>
+    <div class="rowx"><input id="map-q" type="search" aria-label="Search for a place" placeholder="Search a place, e.g. Lisbon or Eiffel Tower" autocomplete="off" class="grow"><button type="button" id="map-go">Search</button></div>
     <div id="map-results" class="results"></div>
     <div id="map-canvas"></div>
     <p class="note err" id="map-err"></p>

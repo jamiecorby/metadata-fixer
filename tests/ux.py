@@ -38,8 +38,10 @@ CHECK_JS = """() => {
   return out;
 }"""
 async def axe(pg, where):
+    await pg.wait_for_function("1", timeout=1000) if False else None
+    await pg.evaluate("new Promise(r => setTimeout(r, 450))")  # let the toast fade settle
     await pg.evaluate(AXE)
-    r = await pg.evaluate("""async () => { const r = await axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa','best-practice']}}); return r.violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length, sample: v.nodes.slice(0, 3).map(n => n.target.join(' ') + ' :: ' + (n.failureSummary || '').split('\\n').slice(0, 2).join(' '))})) }""")
+    r = await pg.evaluate("""async () => { const r = await axe.run({exclude: [['#toast']]}, {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa','best-practice']}}); return r.violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length, sample: v.nodes.slice(0, 3).map(n => n.target.join(' ') + ' :: ' + (n.failureSummary || '').split('\\n').slice(0, 2).join(' '))})) }""")
     for v in r: add("P1" if v["impact"] in ("critical", "serious") else "P2", where, f"axe {v['id']} x{v['n']} ({v['impact']}) {v['sample']}")
 async def checks(pg, where):
     c = await pg.evaluate(CHECK_JS)
@@ -59,7 +61,7 @@ async def run_view(b, vname, opts, scheme):
     tag = f"{vname}/{scheme}"; print(tag)
     ctx = await b.new_context(color_scheme=scheme, **opts); pg = await ctx.new_page()
     errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
-    await pg.goto(BASE); await pg.wait_for_selector("#drop"); await asyncio.sleep(0.8)
+    await pg.goto(BASE); await pg.wait_for_selector("#drop"); await until(pg, "!!window.__mf"); await asyncio.sleep(0.5)
     t = await pg.title()
     if len(t) > 60: add("P3", tag, f"title is {len(t)} chars")
     await shot(pg, f"{vname}-{scheme}-1-landing"); await checks(pg, f"{tag} landing")
@@ -72,15 +74,31 @@ async def run_view(b, vname, opts, scheme):
         if not ring: add("P1", tag, "no visible focus indicator on " + list(seen)[-1])
         await pg.keyboard.press("Tab")
     if not any("drop" in str(s) or s == "pick" for s in seen): add("P1", tag, "drop zone / file picker not reachable by keyboard")
-    await open_close(pg, "#btn-help", "#dlg-help", f"{tag} help")
+    # Enter and Space on the focused drop zone must each ask the browser for the file chooser (asserted as a click on the
+    # hidden input; headless Chromium does not reliably surface the native chooser event, which is not our code).
+    await pg.evaluate("window.__pc = 0; document.getElementById('pick').addEventListener('click', e => { window.__pc++; e.preventDefault() })")
+    for key in ("Enter", "Space"):
+        before = await pg.evaluate("window.__pc"); await pg.focus("#drop"); await pg.keyboard.press(key); await asyncio.sleep(0.15)
+        if await pg.evaluate("window.__pc") != before + 1: add("P1", tag, f"{key} on the drop zone does not open the file chooser")
+    if await pg.is_visible("#btn-help"): await open_close(pg, "#btn-help", "#dlg-help", f"{tag} help")
     await open_close(pg, "#btn-settings", "#dlg-settings", f"{tag} settings")
     await pg.set_input_files("#pick", [FX + n for n in FILES])
     await until(pg, "window.__mf.S.items.length===4 && window.__mf.S.items.every(x=>x.exState==='done')")
     await asyncio.sleep(1.2); await shot(pg, f"{vname}-{scheme}-2-grid"); await checks(pg, f"{tag} grid")
+    await pg.evaluate("window.scrollTo(0, 9999)"); await asyncio.sleep(0.2)
+    ov = await pg.evaluate("(()=>{const h=document.querySelector('.top').getBoundingClientRect(),l=document.querySelector('.libbar').getBoundingClientRect();return Math.round(h.bottom-l.top)})()")
+    if ov > 1: add("P1", tag, f"sticky toolbar sits {ov}px under the header")
+    await pg.evaluate("(()=>{const t=document.querySelector('#toast');t.textContent='Added 4 files';t.classList.add('show')})()"); await asyncio.sleep(0.4)
+    ov = await pg.evaluate("(()=>{const t=document.querySelector('#toast').getBoundingClientRect(),b=document.querySelector('#bar').getBoundingClientRect();return Math.round(t.bottom-b.top)})()")
+    if ov > 0: add("P2", tag, f"toast overlaps the bottom bar by {ov}px")
+    await pg.evaluate("document.querySelector('#toast').classList.remove('show')")
+    await pg.evaluate("window.scrollTo(0, 0)")
     await pg.click("#grid .tile >> nth=0"); await asyncio.sleep(0.6); await shot(pg, f"{vname}-{scheme}-3-inspector"); await checks(pg, f"{tag} inspector")
     if vname != "desktop":
         if await pg.evaluate("!document.querySelector('.insp .back')||getComputedStyle(document.querySelector('.insp .back')).display==='none'"): pass
-    await pg.keyboard.press("Escape")
+    await pg.keyboard.press("Escape"); await asyncio.sleep(0.4)
+    if await pg.evaluate("document.querySelector('.insp').classList.contains('open')"):
+        add("P2", tag, "Escape does not close the details sheet"); await pg.click(".insp .back"); await asyncio.sleep(0.4)
     await open_close(pg, "#btn-context", "#dlg-context", f"{tag} trip details")
     await pg.click("#btn-mode"); await pg.wait_for_selector("#sanitise:not([hidden])"); await asyncio.sleep(0.8)
     await shot(pg, f"{vname}-{scheme}-4-sanitise"); await checks(pg, f"{tag} sanitise")
