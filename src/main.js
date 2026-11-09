@@ -20,6 +20,8 @@ import * as store from "./app/store.js";
 import { pickLocation } from "./app/map.js";
 import * as session from "./app/session.js";
 
+// Haptics where the device has them (Android); a short tick on success, a double pulse on failure. Never on ordinary taps.
+const haptic = (kind) => { try { if (navigator.vibrate && !matchMedia("(prefers-reduced-motion: reduce)").matches) navigator.vibrate(kind === "error" ? [30, 60, 30] : 12); } catch (e) {} };
 // Irreversible actions take a second press within 4 s (no modal, the context stays). The first press says what will happen.
 // The armed state is kept by key, so a panel that redraws in between still shows it and the second press still acts.
 let armed = { key: null, until: 0, ask: "" };

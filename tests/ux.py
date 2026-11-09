@@ -172,6 +172,11 @@ async def run_edges(b):
     await pg.evaluate("document.querySelector('#b-export').click(); document.querySelector('#b-export').click()")
     await pg.wait_for_selector("#dlg-auth[open]", timeout=60000); await asyncio.sleep(0.5)
     if await pg.evaluate("document.querySelectorAll('dialog[open]').length") != 1: add("P1", "edges/double press", "double press on Export opened more than one dialog")
+    await pg.click("#au-go")
+    try:
+        await pg.wait_for_selector("#dlg-export[open] .done-head", timeout=60000)
+        if not await pg.evaluate("document.querySelector('#b-saved').classList.contains('pri') && !document.querySelector('#b-export').classList.contains('pri')"): add("P2", "edges/finish", "after export, Save exported is not the one primary action")
+    except Exception: add("P1", "edges/finish", "export did not reach the finish screen")
     if errs: add("P1", "edges", f"page errors {errs[:2]}")
     await ctx.close(); shutil.rmtree(d, ignore_errors=True)
 async def run_zoom(b):
