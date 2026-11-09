@@ -139,7 +139,9 @@ async def run_early(b):
         const ev = new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}); document.body.dispatchEvent(ev); return ev.defaultPrevented }""")
     if not dropped: add("P1", "early input", "a file dropped before the app started is not intercepted (the browser would open it)")
     gate.set()
-    try: await until(pg, "window.__mf && window.__mf.S.items.length === 2", 30)
+    try:
+        await until(pg, "window.__mf && window.__mf.S.items.length === 2", 30); await asyncio.sleep(0.3)
+        if "already" in (await pg.evaluate("document.querySelector('#toast').textContent")): add("P1", "early input", "early files were handed over twice")
     except Exception: add("P1", "early input", "files chosen or dropped before the app started were lost: " + str(await pg.evaluate("window.__mf ? window.__mf.S.items.map(x => x.name) : 'no app'")))
     await ctx.close()
 async def run_edges(b):
@@ -157,6 +159,12 @@ async def run_edges(b):
         o = await pg.evaluate("document.documentElement.scrollWidth - innerWidth")
         wide = await pg.evaluate("[...document.querySelectorAll('.insp.open *, #grid *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1 && getComputedStyle(e).position !== 'fixed').map(e => e.className || e.tagName).slice(0, 4)")
         if o > 0 or wide: add("P1", "edges/long names " + where, f"overflow {o}px {wide}")
+    # press-again survives a redraw of the details panel in between
+    await pg.click("#i-reset"); await pg.evaluate("window.__mf.renderAll()"); await asyncio.sleep(0.2)
+    if not await pg.evaluate("document.querySelector('#i-reset').textContent.startsWith('Press again')"): add("P2", "edges/press again", "armed Reset lost after the panel redrew")
+    await pg.click("#i-reset"); await asyncio.sleep(0.2)
+    if "reset" not in (await pg.evaluate("document.querySelector('#toast').textContent")).lower() or await pg.evaluate("document.querySelector('#i-reset').textContent.startsWith('Press again')"):
+        add("P1", "edges/press again", "second press on Reset after a redraw did not reset")
     await pg.click(".insp .back"); await asyncio.sleep(0.3)
     await pg.evaluate("window.__mf.S.items.forEach(x => { if (!x.date) x.date = {t: Date.UTC(2020,0,2,3,4,5), off: null, src: 'manual', label: 't', conf: 1, manual: true} }); window.__mf.renderAll()")
     await pg.dblclick("#b-ready"); await asyncio.sleep(0.3)
