@@ -132,9 +132,9 @@ export function mount(api = {}) {
     $("#san-go").onclick = () => go(E);
     $("#san-clear").onclick = (ev) => {
       const b = ev.currentTarget, done = () => { E = []; O.used = new Set(); render(); toast("Cleared. Nothing from these files is kept."); };
-      if (!E.some((e) => e.out) || b.dataset.armed) { if (b.dataset.armed) { clearTimeout(+b.dataset.armed); delete b.dataset.armed; b.textContent = "Clear"; b.classList.remove("armed"); } return done(); }
-      b.textContent = "Press again to clear"; b.classList.add("armed"); toast("Press again to clear. Sanitised copies you have not downloaded will be gone.");
-      b.dataset.armed = String(setTimeout(() => { delete b.dataset.armed; b.textContent = "Clear"; b.classList.remove("armed"); }, 4000));
+      if (!E.some((e) => e.out) || b.dataset.armed) { if (b.dataset.armed) { clearTimeout(+b.dataset.armed); delete b.dataset.armed; b.textContent = "Clear"; b.classList.remove("armed"); b.removeAttribute("aria-describedby"); } return done(); }
+      b.textContent = "Press again to clear"; b.classList.add("armed"); b.setAttribute("aria-describedby", "toast"); toast("Press again to clear. Sanitised copies you have not downloaded will be gone.");
+      b.dataset.armed = String(setTimeout(() => { delete b.dataset.armed; b.textContent = "Clear"; b.classList.remove("armed"); b.removeAttribute("aria-describedby"); }, 4000));
     };
     $("#san-zip").onclick = async () => { try { const b = await buildZip(E); download(b, "sanitised-files.zip"); } catch (er) { toast(er.message); } };
     $("#san-audit").onclick = () => download(new Blob([auditCsv(E)], { type: "text/csv" }), "sanitisation-audit.csv");

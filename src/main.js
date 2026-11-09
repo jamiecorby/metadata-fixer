@@ -21,13 +21,19 @@ import { pickLocation } from "./app/map.js";
 import * as session from "./app/session.js";
 
 // Irreversible actions take a second press within 4 s (no modal, the context stays). The first press says what will happen.
-// Haptics where the device has them (Android); a short tick on success, a double pulse on failure. Never on ordinary taps.
-const haptic = (kind) => { try { if (navigator.vibrate && !matchMedia("(prefers-reduced-motion: reduce)").matches) navigator.vibrate(kind === "error" ? [30, 60, 30] : 12); } catch (e) {} };
-const twoStep = (btn, ask, run) => {
+// The armed state is kept by key, so a panel that redraws in between still shows it and the second press still acts.
+let armed = { key: null, until: 0, ask: "" };
+const showArmed = (btn, on, ask) => {
   if (!btn) return;
-  if (btn.dataset.armed) { clearTimeout(+btn.dataset.armed); delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("armed"); run(); return; }
-  btn.dataset.label = btn.textContent; btn.textContent = ask; btn.classList.add("armed"); toast(ask + ".");
-  btn.dataset.armed = String(setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("armed"); }, 4000));
+  if (on) { if (!btn.dataset.label) btn.dataset.label = btn.textContent; btn.textContent = ask; btn.classList.add("armed"); btn.setAttribute("aria-describedby", "toast"); }
+  else { if (btn.dataset.label) btn.textContent = btn.dataset.label; delete btn.dataset.label; btn.classList.remove("armed"); btn.removeAttribute("aria-describedby"); }
+};
+const reArm = (btn, key) => { if (btn && armed.key === key && Date.now() < armed.until) showArmed(btn, true, armed.ask); };
+const twoStep = (btn, ask, run, key = btn && btn.id) => {
+  if (!btn) return;
+  if (armed.key === key && Date.now() < armed.until) { armed = { key: null, until: 0, ask: "" }; showArmed(btn, false); run(); return; }
+  armed = { key, until: Date.now() + 4000, ask }; showArmed(btn, true, ask); toast(ask + ".");
+  setTimeout(() => { if (armed.key === key && Date.now() >= armed.until) { armed = { key: null, until: 0, ask: "" }; showArmed(document.getElementById(btn.id) || btn, false); } }, 4050);
 };
 const sizeLabel = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"); // same rule as Sanitise
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -284,7 +290,8 @@ function renderInspector() {
   on("i-ai", "onclick", () => runAI([it]));
   on("i-ready", "onclick", () => { it.ready = true; refresh(it); const nx = vis.find((x, j) => j > idx && status(x) === "review"); if (nx) focusItem(nx); toast(`${it.name} is ready.`); });
   on("i-unready", "onclick", () => { it.ready = false; refresh(it); });
-  on("i-reset", "onclick", (ev) => twoStep(ev.currentTarget, "Press again to reset", () => { it.date = null; it.loc = null; it.zone = null; it.ready = false; it.out = null; it.dev = S.settings.dev; autopick(it); refresh(it); toast("Edits on this file reset."); }));
+  reArm($("#i-reset", el), "i-reset:" + it.id);
+  on("i-reset", "onclick", (ev) => twoStep(ev.currentTarget, "Press again to reset", () => { it.date = null; it.loc = null; it.zone = null; it.ready = false; it.out = null; it.dev = S.settings.dev; autopick(it); refresh(it); toast("Edits on this file reset."); }, "i-reset:" + it.id));
 }
 function touched(it) { rezone(it); it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; refresh(it); }
 function focusItem(it, open = true) {
@@ -749,15 +756,20 @@ async function setMode(m) {
   if (san) scrollTo(0, 0);
 }
 $("#btn-mode").onclick = () => setMode(document.body.dataset.mode === "sanitise" ? "recover" : "sanitise");
+// Files inside dropped folders, keeping their relative paths.
+async function entriesToFiles(items) {
+  const out = [];
+  const walk = (ent, path) => new Promise((res) => { if (ent.isFile) ent.file((f) => { try { Object.defineProperty(f, "webkitRelativePath", { value: path + f.name }); } catch (er) {} out.push(f); res(); }, () => res()); else { const r = ent.createReader(), all = []; const rd = () => r.readEntries(async (es) => { if (!es.length) { for (const c of all) await walk(c, path + ent.name + "/"); res(); } else { all.push(...es); rd(); } }, () => res()); rd(); } });
+  for (const it of items) await walk(it, "");
+  return out;
+}
 const routeFiles = (files) => (document.body.dataset.mode === "sanitise" && sanMod ? sanMod.addFiles(files) : addFiles(files));
 addEventListener("drop", async (e) => {
   if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
   e.preventDefault(); dragDepth = 0; $("#drop").classList.remove("over");
   const items = [...(e.dataTransfer.items || [])].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
   if (items.some((x) => x.isDirectory)) {
-    const out = [];
-    const walk = (ent, path) => new Promise((res) => { if (ent.isFile) ent.file((f) => { try { Object.defineProperty(f, "webkitRelativePath", { value: path + f.name }); } catch (er) {} out.push(f); res(); }, () => res()); else { const r = ent.createReader(), all = []; const rd = () => r.readEntries(async (es) => { if (!es.length) { for (const c of all) await walk(c, path + ent.name + "/"); res(); } else { all.push(...es); rd(); } }, () => res()); rd(); } });
-    for (const it of items) await walk(it, "");
+    const out = await entriesToFiles(items);
     routeFiles(out);
   } else routeFiles(e.dataTransfer.files);
 });
@@ -871,4 +883,5 @@ const warm = () => loadEngine().catch(() => {});
 addEventListener("dragenter", warm, { once: true });
 window.__mf = { S, status, plan, renderAll, refresh, session, openExport };
 // files chosen or dropped before the app had started (see boot.js)
-if (window.__early && window.__early.length) { const f = window.__early; window.__early = null; addFiles(f); }
+if (window.__earlyEntries) { const en = window.__earlyEntries; window.__earlyEntries = null; entriesToFiles(en).then((f) => addFiles([...(window.__early || []), ...f])); window.__early = null; }
+else if (window.__early && window.__early.length) { const f = window.__early; window.__early = null; addFiles(f); }
