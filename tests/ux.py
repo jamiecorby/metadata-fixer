@@ -49,7 +49,7 @@ async def checks(pg, where):
     await axe(pg, where)
 async def open_close(pg, opener, dlg, where, closer=None):
     await pg.click(opener); await pg.wait_for_selector(f"{dlg}[open]")
-    await asyncio.sleep(0.25); await checks(pg, where)
+    await asyncio.sleep(0.25); await shot(pg, where.replace("/", "-").replace(" ", "-")); await checks(pg, where)
     inside = await pg.evaluate(f"document.querySelector('{dlg}').contains(document.activeElement)")
     if not inside: add("P1", where, "focus not moved into the dialog")
     await pg.keyboard.press("Escape"); await asyncio.sleep(0.2)
@@ -142,6 +142,30 @@ async def run_early(b):
     try: await until(pg, "window.__mf && window.__mf.S.items.length === 2", 30)
     except Exception: add("P1", "early input", "files chosen or dropped before the app started were lost: " + str(await pg.evaluate("window.__mf ? window.__mf.S.items.map(x => x.name) : 'no app'")))
     await ctx.close()
+async def run_edges(b):
+    # Long and non-ASCII file names at 320px; double presses on the main actions.
+    import tempfile, shutil
+    d = tempfile.mkdtemp(); long = d + "/" + ("Family holiday Lisbon Alfama sunset with grandparents and the dog " * 3).strip().replace(" ", "_") + ".png"
+    acc = d + "/Été à São Paulo - Ølstykke 日本 IMG_0001.jpg"; shutil.copy(FX + "plain.png", long); shutil.copy(FX + "IMG_20190704_143000.jpg", acc)
+    ctx = await b.new_context(viewport={"width": 320, "height": 640}, has_touch=True, is_mobile=True); pg = await ctx.new_page()
+    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    await pg.goto(BASE); await until(pg, "!!window.__mf")
+    await pg.set_input_files("#pick", [long, acc]); await until(pg, "window.__mf.S.items.length===2 && window.__mf.S.items.every(x=>x.exState==='done')")
+    await asyncio.sleep(0.6)
+    for where in ("grid", "details"):
+        if where == "details": await pg.click("#grid .tile >> nth=0"); await asyncio.sleep(0.5)
+        o = await pg.evaluate("document.documentElement.scrollWidth - innerWidth")
+        wide = await pg.evaluate("[...document.querySelectorAll('.insp.open *, #grid *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1 && getComputedStyle(e).position !== 'fixed').map(e => e.className || e.tagName).slice(0, 4)")
+        if o > 0 or wide: add("P1", "edges/long names " + where, f"overflow {o}px {wide}")
+    await pg.click(".insp .back"); await asyncio.sleep(0.3)
+    await pg.evaluate("window.__mf.S.items.forEach(x => { if (!x.date) x.date = {t: Date.UTC(2020,0,2,3,4,5), off: null, src: 'manual', label: 't', conf: 1, manual: true} }); window.__mf.renderAll()")
+    await pg.dblclick("#b-ready"); await asyncio.sleep(0.3)
+    if await pg.evaluate("window.__mf.S.items.filter(x => x.ready).length") != 2: add("P2", "edges/double press", "double press on Mark ready did not leave both files ready")
+    await pg.evaluate("document.querySelector('#b-export').click(); document.querySelector('#b-export').click()")
+    await pg.wait_for_selector("#dlg-auth[open]", timeout=60000); await asyncio.sleep(0.5)
+    if await pg.evaluate("document.querySelectorAll('dialog[open]').length") != 1: add("P1", "edges/double press", "double press on Export opened more than one dialog")
+    if errs: add("P1", "edges", f"page errors {errs[:2]}")
+    await ctx.close(); shutil.rmtree(d, ignore_errors=True)
 async def run_zoom(b):
     ctx = await b.new_context(viewport={"width": 640, "height": 400}); pg = await ctx.new_page(); await pg.goto(BASE); await pg.wait_for_selector("#drop")
     o = await pg.evaluate("document.documentElement.scrollWidth-innerWidth")
@@ -154,7 +178,7 @@ async def main():
             for sc in ("light", "dark"):
                 if vn == "narrow" and sc == "dark": continue
                 await run_view(b, vn, vo, sc)
-        await run_motion(b); await run_zoom(b); await run_early(b); await b.close()
+        await run_motion(b); await run_zoom(b); await run_early(b); await run_edges(b); await b.close()
 asyncio.run(main())
 p1 = [f for f in found if f[0] == "P1"]; p2 = [f for f in found if f[0] == "P2"]
 print(f"\nfindings: P1 {len(p1)}  P2 {len(p2)}  P3 {len(found)-len(p1)-len(p2)}")

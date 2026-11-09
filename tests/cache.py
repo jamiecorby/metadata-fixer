@@ -104,6 +104,8 @@ async def main():
         await reload(pg)
         check("banner again", await pg.evaluate("!document.querySelector('#resume').hidden"))
         await pg.click("#rs-no"); await asyncio.sleep(0.6)
+        check("first Discard press only asks; nothing is lost yet", await pg.evaluate("!document.querySelector('#resume').hidden && document.querySelector('#rs-no').textContent.startsWith('Press again')") and await pg.evaluate(PRESENT))
+        await pg.click("#rs-no"); await asyncio.sleep(0.6)
         check("Discard clears the saved work and hides the banner", await pg.evaluate("document.querySelector('#resume').hidden") and not await pg.evaluate(PRESENT))
         await reload(pg)
         check("nothing is offered after Discard", await pg.evaluate("document.querySelector('#resume').hidden && window.__mf.S.items.length===0"))

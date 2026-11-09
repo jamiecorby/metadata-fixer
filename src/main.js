@@ -20,6 +20,16 @@ import * as store from "./app/store.js";
 import { pickLocation } from "./app/map.js";
 import * as session from "./app/session.js";
 
+// Irreversible actions take a second press within 4 s (no modal, the context stays). The first press says what will happen.
+// Haptics where the device has them (Android); a short tick on success, a double pulse on failure. Never on ordinary taps.
+const haptic = (kind) => { try { if (navigator.vibrate && !matchMedia("(prefers-reduced-motion: reduce)").matches) navigator.vibrate(kind === "error" ? [30, 60, 30] : 12); } catch (e) {} };
+const twoStep = (btn, ask, run) => {
+  if (!btn) return;
+  if (btn.dataset.armed) { clearTimeout(+btn.dataset.armed); delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("armed"); run(); return; }
+  btn.dataset.label = btn.textContent; btn.textContent = ask; btn.classList.add("armed"); toast(ask + ".");
+  btn.dataset.armed = String(setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("armed"); }, 4000));
+};
+const sizeLabel = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"); // same rule as Sanitise
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const plural = (n, w, p = w + "s") => `${n} ${n === 1 ? w : p}`;
@@ -60,7 +70,7 @@ async function addFiles(list) {
   if (!S.items.length) { toast(skipped ? "None of those files are photos or videos this can fix." : "No files added."); return; }
   showWork();
   if (S.focus == null && fresh.length) { S.focus = fresh[0].id; S.sel = new Set([fresh[0].id]); }
-  const msg = [fresh.length && `Added ${plural(fresh.length, "file")}`, carOk && `${plural(carOk, "sidecar")} matched by name`, skipped && `${skipped} unsupported skipped`, media.length - fresh.length > 0 && `${media.length - fresh.length} already added`].filter(Boolean).join(" . ");
+  const msg = [fresh.length && `Added ${plural(fresh.length, "file")}`, carOk && `${plural(carOk, "sidecar")} matched by name`, skipped && `${skipped} unsupported skipped`, media.length - fresh.length > 0 && `${media.length - fresh.length} already added`].filter(Boolean).join(" · ");
   toast(msg || "Nothing new to add.");
   renderAll();
   readQueue(fresh);
@@ -114,7 +124,7 @@ const counts = () => view().counts;
 const stOf = (it) => { const s = view().st.get(it.id); return s === undefined ? status(it) : s; };
 function tileHtml(it, known) {
   const s = known || status(it);
-  return `${it.thumb ? `<img class="th" src="${it.thumb}" alt="" loading="lazy" decoding="async">` : `<div class="ph">${it.prevErr ? "No preview" : it.kind === "video" ? "Video" : "..."}</div>`}
+  return `${it.thumb ? `<img class="th" src="${it.thumb}" alt="" loading="lazy" decoding="async">` : (it.prevErr || it.kind === "video" ? `<div class="ph">${it.prevErr ? "No preview" : "Video"}</div>` : '<div class="ph wait" aria-hidden="true"></div>')}
   <span class="st st-${s}">${STATUS_LABEL[s]}</span>${it.kind === "video" ? '<span class="vid">VIDEO</span>' : ""}<span class="ck" data-ck="1"></span>
   <div class="meta"><div class="nm" title="${esc(it.path)}">${esc(it.name)}</div><div class="ds">${esc(describe(it))}</div></div>`;
 }
@@ -166,7 +176,7 @@ function renderCtxLine() {
   if (S.ctx.start && S.ctx.end) parts.push(`${S.ctx.start} to ${S.ctx.end}`); else if (mc) parts.push(MONTHS[mc.m - 1] + (mc.y ? " " + mc.y : ""));
   if (S.ctx.area) parts.push(`${S.ctx.area.name ? S.ctx.area.name.split(",")[0] : "area"} (${S.ctx.area.r} km)`);
   if (S.ctx.hint) parts.push(`"${S.ctx.hint.slice(0, 40)}"`);
-  $("#ctxline").textContent = parts.length ? "Trip: " + parts.join(" . ") : "";
+  $("#ctxline").textContent = parts.length ? "Trip: " + parts.join(" · ") : "";
   $("#btn-fill").disabled = !(S.ctx.area || (r && mc && mc.y) || (S.ctx.start && S.ctx.end));
 }
 function renderBar() {
@@ -179,8 +189,9 @@ function renderBar() {
   // exported files stay reachable: after the share sheet, a reload or Resume, this is the way back to Save / Download
   const exported = S.items.filter((x) => x.out && x.out.ok).length;
   $("#b-saved").hidden = !exported; $("#b-saved").textContent = `Save exported (${exported})`;
+  const nextIsSave = exported > 0 && !c.ready; $("#b-saved").classList.toggle("pri", nextIsSave); $("#b-saved").classList.toggle("ghost", !nextIsSave); $("#b-export").classList.toggle("pri", !nextIsSave);
   const loading = S.items.filter((x) => x.exState === "pending").length;
-  setStatus(loading ? `Reading metadata... ${S.items.length - loading} of ${S.items.length}` : `${plural(S.items.length, "file")} . ${c.needs} need info . ${c.review} to review . ${c.ready} ready${sel.length > 1 ? ` . <b>${sel.length} selected</b>` : ""}`);
+  setStatus(loading ? `Reading metadata... ${S.items.length - loading} of ${S.items.length}` : `${plural(S.items.length, "file")} · ${c.needs} need info · ${c.review} to review · ${c.ready} ready${sel.length > 1 ? ` · <b>${sel.length} selected</b>` : ""}`);
 }
 function renderAll() { dirty(); renderFilters(); renderGrid(); renderCtxLine(); renderInspector(); renderBar(); }
 function refresh(it) { dirty(); if (it) updateTile(it); renderFilters(); renderInspector(); renderBar(); }
@@ -212,21 +223,21 @@ function renderInspector() {
   const built = buildTags({ kind: it.kind, t: p.t, off: p.off, la: p.la, lo: p.lo, alt: p.alt, dev: it.dev, full: S.settings.full, name: S.settings.devName, label: S.settings.label, write: p.write });
   const w = warnings(it);
   const idx = visible().indexOf(it), vis = visible();
-  const exLine = it.exState === "pending" ? "Reading..." : [ex.date ? `date ${ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC"}${ex.date.off != null ? " " + fmtOffset(ex.date.off) : ""}` : "no date", ex.gps ? `GPS ${ex.gps.la.toFixed(4)}, ${ex.gps.lo.toFixed(4)}` : "no GPS", ex.device && ex.device.model ? ex.device.model : "no device"].join(" . ");
-  const sideLine = [it.side && it.side.takeoutName && `Takeout: ${it.side.takeoutName}`, it.side && it.side.xmpName && `XMP: ${it.side.xmpName}`].filter(Boolean).join(" . ");
-  const candBtn = (c, i, kind) => { const on = kind === "d" ? d && d.src === c.src && Math.abs(d.t - c.t) < 1000 : l && Math.abs(l.la - c.la) < 1e-6 && Math.abs(l.lo - c.lo) < 1e-6; const v = kind === "d" ? human(c.t) + (c.off != null ? " " + fmtOffset(c.off) : "") : `${c.la.toFixed(4)}, ${c.lo.toFixed(4)}`; return `<button type="button" class="cand${on ? " on" : ""}" data-${kind}c="${i}"><span class="v">${esc(v)}</span><span class="l">${esc(c.label)}${c.note ? " . " + esc(c.note) : ""} ${confBar(c.conf)}</span></button>`; };
+  const exLine = it.exState === "pending" ? "Reading..." : [ex.date ? `date ${ex.date.t != null ? human(ex.date.t) : human(ex.date.u) + " UTC"}${ex.date.off != null ? " " + fmtOffset(ex.date.off) : ""}` : "no date", ex.gps ? `GPS ${ex.gps.la.toFixed(4)}, ${ex.gps.lo.toFixed(4)}` : "no GPS", ex.device && ex.device.model ? ex.device.model : "no device"].join(" · ");
+  const sideLine = [it.side && it.side.takeoutName && `Takeout: ${it.side.takeoutName}`, it.side && it.side.xmpName && `XMP: ${it.side.xmpName}`].filter(Boolean).join(" · ");
+  const candBtn = (c, i, kind) => { const on = kind === "d" ? d && d.src === c.src && Math.abs(d.t - c.t) < 1000 : l && Math.abs(l.la - c.la) < 1e-6 && Math.abs(l.lo - c.lo) < 1e-6; const v = kind === "d" ? human(c.t) + (c.off != null ? " " + fmtOffset(c.off) : "") : `${c.la.toFixed(4)}, ${c.lo.toFixed(4)}`; return `<button type="button" class="cand${on ? " on" : ""}" data-${kind}c="${i}"><span class="v">${esc(v)}</span><span class="l">${esc(c.label)}${c.note ? " · " + esc(c.note) : ""} ${confBar(c.conf)}</span></button>`; };
   const nD = showAll.d ? dc.length : 3, nL = showAll.l ? lc.length : 3;
   const zoneTxt = p.t != null ? `${it.zone ? esc(it.zone) : esc(zoneLabel(p.zone))}${p.off != null ? " (UTC" + fmtOffset(p.off) + ")" : ""}${it.zone ? "" : d && d.off != null && !it.zone ? " from the source" : l || (ex.gps) ? " from the location" : " default"}` : "";
   el.innerHTML = `
   <h2 class="sr-only">File details</h2>
   <div class="irow"><button class="ghost small back" id="i-back">&larr; Back</button><span class="badge st-${s}">${STATUS_LABEL[s]}</span><span class="rowx"><button class="ghost small" id="i-prev" ${idx <= 0 ? "disabled" : ""} aria-label="Previous">&larr;</button><button class="ghost small" id="i-next" ${idx < 0 || idx >= vis.length - 1 ? "disabled" : ""} aria-label="Next">&rarr;</button></span></div>
-  <div style="margin-top:8px">${it.prevUrl ? `<img class="pv" src="${it.prevUrl}" alt="Preview of ${esc(it.name)}">` : `<div class="pvph">${it.prevErr ? esc(it.prevErr) : "Loading preview..."}</div>`}</div>
-  <div class="fname" style="margin-top:8px">${esc(it.path)}</div>
-  <div class="src">${(it.size / 1048576).toFixed(1)} MB . In the file: ${esc(exLine)}${sideLine ? "<br>" + esc(sideLine) : ""}${it.exErr ? `<br><span class="err">${esc(it.exErr)}</span>` : ""}</div>
+  <div class="mt8">${it.prevUrl ? `<img class="pv" src="${it.prevUrl}" alt="Preview of ${esc(it.name)}">` : `<div class="pvph">${it.prevErr ? esc(it.prevErr) : "Loading preview..."}</div>`}</div>
+  <div class="fname mt8">${esc(it.path)}</div>
+  <div class="src">${sizeLabel(it.size)} · In the file: ${esc(exLine)}${sideLine ? "<br>" + esc(sideLine) : ""}${it.exErr ? `<br><span class="err">${esc(it.exErr)}</span>` : ""}</div>
   ${it.ai && it.ai.scene ? `<div class="src">AI sees: <b>${esc(it.ai.scene)}</b></div>` : ""}
 
   <h3>Date and time</h3>
-  ${d ? `<div class="src"><b>${SRC[d.manual && d.src === "manual" ? "manual" : d.src] || d.src}</b>${d.label && d.src !== "manual" ? " . " + esc(d.label) : ""} ${confBar(d.conf)}</div>` : '<div class="src warn">No date yet: pick a suggestion, type one, or use AI.</div>'}
+  ${d ? `<div class="src"><b>${SRC[d.manual && d.src === "manual" ? "manual" : d.src] || d.src}</b>${d.label && d.src !== "manual" ? " · " + esc(d.label) : ""} ${confBar(d.conf)}</div>` : '<div class="src warn">No date yet: pick a suggestion, type one, or use AI.</div>'}
   <label>Local date and time<input type="datetime-local" step="1" id="i-dt" value="${toLocalInput(d ? d.t : null)}"></label>
   <label>Time zone <span class="note">(leave blank for automatic: ${esc(zoneLabel(p.zone))})</span><input id="i-zone" list="zones" placeholder="Automatic" value="${esc(it.zone || "")}"></label>
   ${zoneTxt ? `<div class="src">Offset: <b>${zoneTxt}</b></div>` : ""}
@@ -234,9 +245,9 @@ function renderInspector() {
   ${dc.length > 3 ? `<button type="button" class="more" id="i-moreD">${showAll.d ? "Fewer" : "All " + dc.length + " suggestions"}</button>` : ""}
 
   <h3>Location</h3>
-  ${l ? `<div class="src"><b>${SRC[l.src] || l.src}</b>${l.place ? " . " + esc(l.place) : ""} ${confBar(l.conf)}</div>` : '<div class="src">No location. Optional, but it also fixes the time zone.</div>'}
-  <div class="two" style="margin-top:6px"><label>Latitude<input id="i-la" inputmode="decimal" value="${l ? l.la : ""}"></label><label>Longitude<input id="i-lo" inputmode="decimal" value="${l ? l.lo : ""}"></label></div>
-  <div class="rowx" style="margin-top:8px"><button type="button" id="i-map">Pick on map</button>${l ? '<button type="button" class="ghost" id="i-noloc">Remove</button>' : ""}</div>
+  ${l ? `<div class="src"><b>${SRC[l.src] || l.src}</b>${l.place ? " · " + esc(l.place) : ""} ${confBar(l.conf)}</div>` : '<div class="src">No location. Optional, but it also fixes the time zone.</div>'}
+  <div class="two mt6"><label>Latitude<input id="i-la" inputmode="decimal" value="${l ? l.la : ""}"></label><label>Longitude<input id="i-lo" inputmode="decimal" value="${l ? l.lo : ""}"></label></div>
+  <div class="rowx mt8"><button type="button" id="i-map">Pick on map</button>${l ? '<button type="button" class="ghost" id="i-noloc">Remove</button>' : ""}</div>
   <div class="cands">${lc.slice(0, nL).map((c, i) => candBtn(c, i, "l")).join("")}</div>
   ${lc.length > 3 ? `<button type="button" class="more" id="i-moreL">${showAll.l ? "Fewer" : "All " + lc.length + " suggestions"}</button>` : ""}
 
@@ -246,7 +257,7 @@ function renderInspector() {
   ${w.length ? `<div class="warnbox">${w.map(esc).join("<br>")}</div>` : ""}
   <h3>Will be written</h3>
   <div class="wplan">${built.summary.length ? esc(built.summary.join("\n")) : p.any ? "" : ex.date ? "Nothing: this file already has a date" + (S.settings.policy === "fill" ? " (fill-missing mode keeps it)" : "") + "." : "Nothing yet."}</div>
-  ${it.out ? `<div class="src ${it.out.ok ? "okc" : "err"}" style="margin-top:6px">${it.out.ok ? "Written and verified." : "Verification failed: " + esc(it.out.diffs.join("; "))}</div>` : ""}
+  ${it.out ? `<div class="src mt6 ${it.out.ok ? "okc" : "err"}">${it.out.ok ? "Written and verified." : "Verification failed: " + esc(it.out.diffs.join("; "))}</div>` : ""}
   <div class="actions">
     <button type="button" id="i-ai">${it.aiState === "busy" ? "Looking..." : it.ai ? "Ask AI again" : "AI suggest"}</button>
     ${s === "ready" ? '<button type="button" id="i-unready">Unmark</button>' : `<button type="button" class="pri" id="i-ready" ${s === "review" ? "" : "disabled"}>Mark ready</button>`}
@@ -273,7 +284,7 @@ function renderInspector() {
   on("i-ai", "onclick", () => runAI([it]));
   on("i-ready", "onclick", () => { it.ready = true; refresh(it); const nx = vis.find((x, j) => j > idx && status(x) === "review"); if (nx) focusItem(nx); toast(`${it.name} is ready.`); });
   on("i-unready", "onclick", () => { it.ready = false; refresh(it); });
-  on("i-reset", "onclick", () => { it.date = null; it.loc = null; it.zone = null; it.ready = false; it.out = null; it.dev = S.settings.dev; autopick(it); refresh(it); });
+  on("i-reset", "onclick", (ev) => twoStep(ev.currentTarget, "Press again to reset", () => { it.date = null; it.loc = null; it.zone = null; it.ready = false; it.out = null; it.dev = S.settings.dev; autopick(it); refresh(it); toast("Edits on this file reset."); }));
 }
 function touched(it) { rezone(it); it.out = null; if (it.ready && status(it) !== "ready") it.ready = false; refresh(it); }
 function focusItem(it, open = true) {
@@ -294,14 +305,14 @@ function renderBulk(el, sel) {
   const dated = sel.filter((x) => x.date).length;
   el.innerHTML = `
   <div class="irow"><button class="ghost small back" id="b-back">&larr; Back</button><h2>${sel.length} selected</h2><button class="ghost small" id="b-clear">Clear selection</button></div>
-  <div class="src">${Object.entries(by).map(([k, n]) => `${n} ${STATUS_LABEL[k].toLowerCase()}`).join(" . ")}</div>
-  <div class="bulkgrid" style="margin-top:12px">
-   <div class="bulk"><h3 style="margin-top:0">Set date and time</h3><div class="rowx"><input type="datetime-local" step="1" id="b-dt" aria-label="Date and time"><button id="b-dt-go">Set for all</button></div>
-     <p class="note">Or spread across a period in file order:</p><div class="two"><input type="datetime-local" step="1" id="b-from" aria-label="From"><input type="datetime-local" step="1" id="b-to" aria-label="To"></div><button id="b-spread" style="margin-top:6px">Spread ${sel.length} files</button></div>
-   <div class="bulk"><h3 style="margin-top:0">Shift times</h3><p class="note">Fix a camera clock or time zone mistake on ${dated} dated file${dated === 1 ? "" : "s"}.</p><div class="rowx"><select id="b-sign" aria-label="Direction" style="width:auto"><option value="1">Later by</option><option value="-1">Earlier by</option></select><input id="b-h" aria-label="Hours" inputmode="numeric" placeholder="hours" style="width:90px"><input id="b-m" aria-label="Minutes" inputmode="numeric" placeholder="minutes" style="width:90px"><button id="b-shift">Shift</button></div></div>
-   <div class="bulk"><h3 style="margin-top:0">Location</h3><div class="rowx"><button id="b-map">Pick on map for all</button><button class="ghost" id="b-noloc">Remove location</button></div></div>
-   <div class="bulk"><h3 style="margin-top:0">Time zone and device</h3><div class="two"><label>Time zone<input id="b-zone" list="zones" placeholder="Automatic"></label><label>Device<select id="b-dev">${devOptions("", true)}</select></label></div><button id="b-zd" style="margin-top:6px">Apply</button></div>
-   <div class="bulk"><h3 style="margin-top:0">Suggestions</h3><div class="rowx"><button id="b-best">Use best suggestion</button><button id="b-ai2">AI suggest (${sel.length})</button></div><p class="note">Best suggestion takes the strongest evidence for each file, including AI results already received.</p></div>
+  <div class="src">${Object.entries(by).map(([k, n]) => `${n} ${STATUS_LABEL[k].toLowerCase()}`).join(" · ")}</div>
+  <div class="bulkgrid mt12">
+   <div class="bulk"><h3 class="mt0">Set date and time</h3><div class="rowx"><input type="datetime-local" step="1" id="b-dt" aria-label="Date and time"><button id="b-dt-go">Set for all</button></div>
+     <p class="note">Or spread across a period in file order:</p><div class="two"><input type="datetime-local" step="1" id="b-from" aria-label="From"><input type="datetime-local" step="1" id="b-to" aria-label="To"></div><button class="mt6" id="b-spread">Spread ${sel.length} files</button></div>
+   <div class="bulk"><h3 class="mt0">Shift times</h3><p class="note">Fix a camera clock or time zone mistake on ${dated} dated file${dated === 1 ? "" : "s"}.</p><div class="rowx"><select class="wauto" id="b-sign" aria-label="Direction"><option value="1">Later by</option><option value="-1">Earlier by</option></select><input class="w90" id="b-h" aria-label="Hours" inputmode="numeric" placeholder="hours"><input class="w90" id="b-m" aria-label="Minutes" inputmode="numeric" placeholder="minutes"><button id="b-shift">Shift</button></div></div>
+   <div class="bulk"><h3 class="mt0">Location</h3><div class="rowx"><button id="b-map">Pick on map for all</button><button class="ghost" id="b-noloc">Remove location</button></div></div>
+   <div class="bulk"><h3 class="mt0">Time zone and device</h3><div class="two"><label>Time zone<input id="b-zone" list="zones" placeholder="Automatic"></label><label>Device<select id="b-dev">${devOptions("", true)}</select></label></div><button class="mt6" id="b-zd">Apply</button></div>
+   <div class="bulk"><h3 class="mt0">Suggestions</h3><div class="rowx"><button id="b-best">Use best suggestion</button><button id="b-ai2">AI suggest (${sel.length})</button></div><p class="note">Best suggestion takes the strongest evidence for each file, including AI results already received.</p></div>
   </div>
   <div class="actions"><button class="pri" id="b-rdy">Mark ${sel.length} ready</button><button id="b-unrdy">Unmark</button></div>`;
   el.classList.toggle("open", mobile() && S.insOpen === true); document.body.classList.toggle("sheet", mobile() && S.insOpen === true);
@@ -418,7 +429,7 @@ function openContext() {
   const d = $("#dlg-context");
   $("#cx-month").innerHTML = '<option value="">Any month</option>' + MONTHS.map((m, i) => `<option value="${i + 1}"${+S.ctx.month === i + 1 ? " selected" : ""}>${m}</option>`).join("");
   $("#cx-year").value = S.ctx.year || ""; $("#cx-start").value = S.ctx.start || ""; $("#cx-end").value = S.ctx.end || ""; $("#cx-hint").value = S.ctx.hint || "";
-  const showArea = () => { $("#cx-area").textContent = S.ctx.area ? `${S.ctx.area.name || S.ctx.area.la.toFixed(3) + ", " + S.ctx.area.lo.toFixed(3)} . ${S.ctx.area.r} km` : "Anywhere"; };
+  const showArea = () => { $("#cx-area").textContent = S.ctx.area ? `${S.ctx.area.name || S.ctx.area.la.toFixed(3) + ", " + S.ctx.area.lo.toFixed(3)} · ${S.ctx.area.r} km` : "Anywhere"; };
   showArea();
   $("#cx-area-pick").onclick = async () => { d.close(); const a = S.ctx.area; const r = await pickLocation({ title: "Roughly where was the trip?", area: true, la: a && a.la, lo: a && a.lo, r: a ? a.r : 25, name: a && a.name }); if (r) S.ctx.area = { la: r.la, lo: r.lo, r: r.r, name: r.name, zone: r.zone }; persistCtx(); openContext(); };
   $("#cx-area-clear").onclick = () => { S.ctx.area = null; showArea(); };
@@ -483,6 +494,7 @@ async function exportReady() {
     done += part.length; $("#prog").value = done;
   }
   S.busy = false; $("#prog").hidden = true; refresh();
+  haptic(S.items.some((x) => x.out && !x.out.ok) ? "error" : "success");
   openExport();
 }
 function auditCsv() {
@@ -501,8 +513,8 @@ function openExport() {
   const zipFirst = S.settings.delivery === "zip" || (S.settings.delivery === "auto" && dirs > 1);
   const body = $("#export-body");
   body.innerHTML = !outs.length ? '<p class="note">Nothing exported yet. Mark files ready, then press Export.</p>' : `
-    <div class="sumline"><span class="okc"><b>${good.length}</b> written and verified</span>${bad.length ? `<span class="err"><b>${bad.length}</b> failed</span>` : ""}<span class="note" style="margin:0">Originals untouched</span></div>
-    <div class="actions" style="margin-top:4px">
+    <div class="sumline done-head${bad.length ? " some-bad" : ""}"><span class="done-ic" aria-hidden="true"></span><div><h3 class="m0">${good.length ? `${plural(good.length, "file")} fixed and verified` : "Nothing could be written"}${bad.length ? `<span class="err"> · ${bad.length} failed</span>` : ""}</h3><p class="note m0">${good.length ? "Each copy was read back and checked. Your originals are untouched: save the new copies to keep the changes." : "See below for why. Your originals are untouched."}</p></div></div>
+    <div class="actions mt4">
       ${canShare ? `<button type="button" class="${zipFirst ? "" : "pri"}" id="x-share">Save to Photos / Share (${good.length})</button>` : ""}
       <button type="button" class="${!canShare && !zipFirst ? "pri" : ""}" id="x-save" ${good.length ? "" : "disabled"}>Download ${good.length > 1 ? good.length + " files" : "file"}</button>
       <button type="button" class="${zipFirst ? "pri" : ""}" id="x-zip" ${good.length ? "" : "disabled"}>Download ZIP${dirs > 1 ? " (keeps folders)" : ""}</button>
@@ -510,7 +522,7 @@ function openExport() {
     </div>
     <p class="note">${canShare ? "On iPhone and iPad, Save to Photos opens the share sheet: choose Save Images / Save Videos. " : ""}Downloads are new copies with the fixed metadata.${dirs > 1 ? " Your files came from several folders, so the ZIP keeps that structure." : ""}</p>
     ${bad.length ? `<h3 class="err">Failed</h3>${bad.map((x) => `<div class="orow"><span></span><div><div class="nm">${esc(x.path)}</div><div class="s err">${esc(x.out.diffs.join("; "))}</div></div><span></span></div>`).join("")}` : ""}
-    <h3>Files</h3><div class="biglist">${good.map((x, i) => `<div class="orow">${x.thumb ? `<img src="${x.thumb}" alt="">` : "<span></span>"}<div><div class="nm">${esc(x.out.key)}</div><div class="s">${esc(x.out.summary.join(" . "))}</div></div><div class="acts">${canShare ? `<button type="button" class="small" data-sh="${i}">Share</button>` : ""}<button type="button" class="small" data-dl="${i}">Save</button></div></div>`).join("")}</div>`;
+    <h3>Files</h3><div class="biglist">${good.map((x, i) => `<div class="orow">${x.thumb ? `<img src="${x.thumb}" alt="">` : "<span></span>"}<div><div class="nm">${esc(x.out.key)}</div><div class="s">${esc(x.out.summary.join(" · "))}</div></div><div class="acts">${canShare ? `<button type="button" class="small" data-sh="${i}">Share</button>` : ""}<button type="button" class="small" data-dl="${i}">Save</button></div></div>`).join("")}</div>`;
   const d = $("#dlg-export"); if (!d.open) d.showModal();
   const sh = $("#x-share"); if (sh) sh.onclick = async () => { try { await navigator.share({ files }); toast("Shared."); } catch (e) { if (e.name !== "AbortError") toast("Sharing didn't work here. Use Download instead.", 5000); } };
   const sv = $("#x-save"); if (sv) sv.onclick = async () => { for (let i = 0; i < good.length; i++) { downloadBlob(files[i], good[i].out.name); await new Promise((r) => setTimeout(r, 350)); } toast(`${plural(good.length, "download")} started.`); };
@@ -545,9 +557,9 @@ function auCard(it) {
   const ev = x.evidence.filter((e) => e.id !== "stripped" ? Math.abs(e.w) > 0 || e.tone === "warn" : true).slice(0, 6);
   const cc = au.claims && au.claims.present ? `<p class="note">Content Credentials found (${esc(au.claims.container)}${au.claims.issuer ? ", " + esc(au.claims.issuer) : ""}). Signatures are not validated here. Saving changes invalidates the signature, but the manifest is kept.</p>` : "";
   return `<article class="au-card" data-id="${it.id}">${head}
-    <div class="au-meter">${none ? `<span class="au-score au-mid">-</span>` : `<span class="au-score au-${t}" aria-hidden="true">${x.score}</span><span class="au-bar au-${t}" role="img" aria-label="${esc(meterLabel(x))}"><i style="left:${x.band[0]}%;width:${Math.max(2, x.band[1] - x.band[0])}%"></i><b style="left:${x.score}%"></b></span>`}<span><b>${esc(x.level)}</b>${none ? "" : ` . ${esc(x.confidence)} confidence (${x.band[0]}-${x.band[1]})`}</span></div>
+    <div class="au-meter">${none ? `<span class="au-score au-mid">-</span>` : `<span class="au-score au-${t}" aria-hidden="true">${x.score}</span><span class="au-bar au-${t}" role="img" aria-label="${esc(meterLabel(x))}"><i style="left:${x.band[0]}%;width:${Math.max(2, x.band[1] - x.band[0])}%"></i><b style="left:${x.score}%"></b></span>`}<span><b>${esc(x.level)}</b>${none ? "" : ` · ${esc(x.confidence)} confidence (${x.band[0]}-${x.band[1]})`}</span></div>
     ${ev.length ? `<ul class="au-ev">${ev.map((e) => `<li>${esc(e.title)}${e.detail ? ` <span class="note">- ${esc(e.detail)}</span>` : ""}</li>`).join("")}</ul>` : ""}
-    ${cc}<p class="note" style="margin:6px 0 0">${x.suggestions.map(esc).join(" ")}</p>
+    ${cc}<p class="note mt6 m0x">${x.suggestions.map(esc).join(" ")}</p>
     <div class="au-fixwrap">${auFix(it)}</div></div></article>`;
 }
 function auFix(it) {
@@ -555,7 +567,7 @@ function auFix(it) {
   const opt = (v, l) => `<option value="${v}" ${au.disclosure === v ? "selected" : ""}>${l}</option>`;
   return `<div class="au-fix"><label class="chk"><input type="checkbox" data-fix="${it.id}" ${au.fix ? "checked" : ""}> Apply Fix on export</label>
     <label>Disclosure label <select data-disc="${it.id}">${opt("auto", "Automatic")}${opt("ai", "AI-generated")}${opt("composite", "AI-edited")}${opt("none", "No label")}</select></label></div>
-    <p class="note" style="margin:2px 0 0">${pv && pv.actions.length ? "Fix would: " + pv.actions.map(esc).join("; ") + "." : "Fix has nothing to change with these settings."} It never removes or hides AI provenance.${status(it) !== "ready" && au.fix && pv && pv.actions.length ? " This file had nothing else to change, so Fix will export a corrected copy." : ""}</p>`;
+    <p class="note mt2 m0x">${pv && pv.actions.length ? "Fix would: " + pv.actions.map(esc).join("; ") + "." : "Fix has nothing to change with these settings."} It never removes or hides AI provenance.${status(it) !== "ready" && au.fix && pv && pv.actions.length ? " This file had nothing else to change, so Fix will export a corrected copy." : ""}</p>`;
 }
 function openAuth(list) {
   const d = $("#dlg-auth"), body = $("#auth-body"), foot = $("#auth-foot");
@@ -566,11 +578,11 @@ function openAuth(list) {
   const goLabel = () => { const n = exportList().length; const b = $("#au-go"); if (b) { b.textContent = n ? `Continue to export (${n})` : "Continue"; } };
   const draw = () => {
     body.innerHTML = `<p class="note">An advisory heuristic from the file's metadata, Content Credentials and (if you run it) a look at the picture. It is not proof either way, and it never blocks your export. Files marked genuine can still be edited; files marked AI can still be genuine.</p>
-      <div class="au-sum"><span><b>${list.length}</b> checked</span><span class="${flagged.length ? "warn" : "okc"}"><b>${flagged.length}</b> flagged</span><span class="note" style="margin:0">${fine.length} look fine</span></div>
+      <div class="au-sum"><span><b>${list.length}</b> checked</span><span class="${flagged.length ? "warn" : "mut"}"><b>${flagged.length}</b> flagged</span>${attention.length - flagged.length ? `<span><b>${attention.length - flagged.length}</b> not enough evidence</span>` : ""}<span><b>${fine.length}</b> look fine</span></div>
       ${attention.slice(0, CAP).map(auCard).join("")}${attention.length > CAP ? `<p class="note">${attention.length - CAP} more files need a look; they are exported with the same settings and are listed in the audit log.</p>` : ""}
       ${fine.length ? `<details><summary>${fine.length} file${fine.length === 1 ? "" : "s"} with no concerns</summary><ul class="au-ev">${fine.slice(0, 200).map((x) => `<li>${esc(x.path)} <span class="note">- ${x.auth && x.auth.a ? x.auth.a.score + ", " + esc(x.auth.a.level) : "not checked"}</span></li>`).join("")}</ul></details>` : ""}`;
     const n = canV().length, fixable = flagged.filter((x) => previewFix(x) && previewFix(x).actions.length && !x.auth.fix).length;
-    foot.innerHTML = `<button type="button" id="au-vis" ${n && mode !== "none" ? "" : "disabled"}>Run visual check (${n}${mode === "account" ? " credit" + (n === 1 ? "" : "s") : ""})</button><button type="button" id="au-fixall" ${fixable ? "" : "disabled"}>Apply Fix to flagged (${fixable})</button><button type="button" id="au-back" class="ghost">Back</button><button type="button" id="au-go" class="pri"></button><span id="au-msg" class="note" role="status" aria-live="polite" style="flex-basis:100%;margin:0;text-align:right"></span>`;
+    foot.innerHTML = `<button type="button" id="au-vis" ${n && mode !== "none" ? "" : "disabled"}>Run visual check (${n}${mode === "account" ? " credit" + (n === 1 ? "" : "s") : ""})</button><button type="button" id="au-fixall" ${fixable ? "" : "hidden"}>Apply Fix to flagged (${fixable})</button><button type="button" id="au-back" class="ghost">Back</button><button type="button" id="au-go" class="pri"></button><span id="au-msg" class="note fullright" role="status" aria-live="polite"></span>`;
     goLabel();
     $("#au-back").onclick = () => d.close();
     $("#au-go").onclick = () => { d.close(); exportList().length ? exportReady() : openExport(); };
@@ -607,9 +619,9 @@ function openSettings(focus) {
   $("#settings-body").innerHTML = `
   <h3>Templates</h3>
   <p class="note">A template saves all of these settings plus your Trip details, so you can reuse them next time.</p>
-  <div class="rowx"><select id="s-tpl" aria-label="Saved templates" style="flex:1 1 200px"><option value="">${tnames.length ? "Apply a saved template..." : "No saved templates yet"}</option>${tnames.map((n) => `<option>${esc(n)}</option>`).join("")}</select><button type="button" class="ghost danger" id="s-tdel" disabled>Delete</button></div>
-  <div class="rowx" style="margin-top:6px"><input id="s-tname" aria-label="Template name" maxlength="40" placeholder="Name, e.g. Lisbon July 2021" style="flex:1 1 200px"><button type="button" id="s-tsave">Save current</button></div>
-  <div class="rowx" style="margin-top:6px"><button type="button" class="ghost" id="s-last" ${store.lastUsed ? "" : "disabled"}>Use last used settings</button><span class="note">${acct.user ? "Saved to your account, on every device." : "Saved in this browser." + (acct.configured ? " Sign in to keep them on every device." : "")}</span></div>
+  <div class="rowx"><select class="grow" id="s-tpl" aria-label="Saved templates"><option value="">${tnames.length ? "Apply a saved template..." : "No saved templates yet"}</option>${tnames.map((n) => `<option>${esc(n)}</option>`).join("")}</select><button type="button" class="ghost danger" id="s-tdel" disabled>Delete</button></div>
+  <div class="rowx mt6"><input class="grow" id="s-tname" aria-label="Template name" maxlength="40" placeholder="Name, e.g. Lisbon July 2021"><button type="button" id="s-tsave">Save current</button></div>
+  <div class="rowx mt6"><button type="button" class="ghost" id="s-last" ${store.lastUsed ? "" : "disabled"}>Use last used settings</button><span class="note">${acct.user ? "Saved to your account, on every device." : "Saved in this browser." + (acct.configured ? " Sign in to keep them on every device." : "")}</span></div>
   <div class="sect"><h3>Time and writing</h3>
   <label>Default time zone (used when a file has no location or offset)<input id="s-zone" list="zones" value="${esc(st.zone)}"></label>
   <label class="chk"><input type="radio" name="pol" value="fill" ${st.policy === "fill" ? "checked" : ""}> Fill in what's missing; keep anything already in the file (recommended)</label>
@@ -629,7 +641,7 @@ function openSettings(focus) {
   <label>Delivery<select id="s-deliv"><option value="auto" ${st.delivery === "auto" ? "selected" : ""}>Separate files; ZIP when files came from several folders</option><option value="zip" ${st.delivery === "zip" ? "selected" : ""}>Always offer a ZIP first</option></select></label></div>
   <div class="sect" id="s-ai-sect"><h3>AI suggestions</h3>
   <p class="note">${acct.configured ? "AI suggestions use credits from your account." : "AI suggestions through an account are coming soon."} Advanced: use your own Anthropic or Google Gemini API key instead. It stays in this browser and images go straight to that provider.</p>
-  <div class="rowx"><input type="password" id="s-key" aria-label="Anthropic or Gemini API key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-... or AIza..."}" autocomplete="off" style="flex:1 1 200px"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
+  <div class="rowx"><input class="grow" type="password" id="s-key" aria-label="Anthropic or Gemini API key" placeholder="${ownKey.get() ? "Key saved (ends " + esc(ownKey.get().slice(-4)) + ")" : "sk-ant-... or AIza..."}" autocomplete="off"><button type="button" id="s-keysave">Save key</button>${ownKey.get() ? '<button type="button" class="ghost" id="s-keyclr">Remove</button>' : ""}</div>
   <label class="chk"><input type="checkbox" id="s-keyrem"> Remember the key on this device</label></div>`;
   const d = $("#dlg-settings"); if (!d.open) d.showModal();
   if (focus === "ai") setTimeout(() => $("#s-ai-sect").scrollIntoView({ block: "start" }), 50);
@@ -648,7 +660,7 @@ function openSettings(focus) {
   $("#s-auth").onchange = (e) => upd("authMode", e.target.value);
   $("#s-tpl").onchange = (e) => { const n = e.target.value; $("#s-tdel").disabled = !n; delArm = null; $("#s-tdel").textContent = "Delete"; if (!n) return; applySnapshot(store.templates[n]); $("#s-tname").value = n; toast(`Applied template "${n}".`); openSettings(); $("#s-tpl").value = n; $("#s-tname").value = n; $("#s-tdel").disabled = false; };
   $("#s-tsave").onclick = async () => { const n = $("#s-tname").value.trim().slice(0, 40); if (!n) { $("#s-tname").focus(); return toast("Type a name for the template."); } const existed = n in store.templates; const ok = await store.saveTemplate(n, snapshot()); toast(`${existed ? "Updated" : "Saved"} template "${n}"${ok === false ? " in this browser (account sync failed)" : ""}.`); openSettings(); $("#s-tpl").value = n; $("#s-tname").value = n; $("#s-tdel").disabled = false; };
-  $("#s-tdel").onclick = async () => { const n = $("#s-tpl").value; if (!n) return; if (delArm !== n) { delArm = n; $("#s-tdel").textContent = "Tap again to delete"; setTimeout(() => { if (delArm === n) { delArm = null; const b = $("#s-tdel"); if (b) b.textContent = "Delete"; } }, 4000); return; } delArm = null; await store.deleteTemplate(n); toast(`Deleted "${n}".`); openSettings(); };
+  $("#s-tdel").onclick = async () => { const n = $("#s-tpl").value; if (!n) return; if (delArm !== n) { delArm = n; $("#s-tdel").textContent = "Press again to delete"; setTimeout(() => { if (delArm === n) { delArm = null; const b = $("#s-tdel"); if (b) b.textContent = "Delete"; } }, 4000); return; } delArm = null; await store.deleteTemplate(n); toast(`Deleted "${n}".`); openSettings(); };
   $("#s-last").onclick = () => { applySnapshot(store.lastUsed); toast("Restored your last used settings."); openSettings(); };
   $("#s-keysave").onclick = () => { const v = $("#s-key").value.trim(); if (!validKey(v)) return toast("That doesn't look like an Anthropic (sk-...) or Gemini (AIza...) API key."); ownKey.set(v, $("#s-keyrem").checked); toast(`Key saved. AI features now use your ${keyProvider(v) === "gemini" ? "Gemini" : "Anthropic"} key.`); openSettings("ai"); renderInspector(); };
   const kc = $("#s-keyclr"); if (kc) kc.onclick = () => { ownKey.set(""); toast("Key removed."); openSettings("ai"); renderInspector(); };
@@ -693,7 +705,7 @@ function openAccount(mode, msg) {
   } else {
     $("#acct-title").textContent = mode === "buy" ? "Buy AI credits" : "Your account";
     body.innerHTML = `${msg ? `<p>${esc(msg)}</p>` : ""}<p>Signed in as <b>${esc(acct.user.email || "")}</b></p><p>Balance: <b class="mono">${acct.credits ?? "..."}</b> AI credits</p>
-      <h3>Buy credits</h3><div class="bulkgrid">${CONFIG.packs.map((p) => `<div class="bulk rowx" style="justify-content:space-between"><span><b>${p.credits.toLocaleString()} credits</b> . ${p.price}<br><span class="note">${p.note}</span></span><button type="button" class="${p.featured ? "pri" : ""}" data-buy2="${p.id}">Buy</button></div>`).join("")}</div>
+      <h3>Buy credits</h3><div class="bulkgrid">${CONFIG.packs.map((p) => `<div class="bulk rowx between"><span><b>${p.credits.toLocaleString()} credits</b> · ${p.price}<br><span class="note">${p.note}</span></span><button type="button" class="${p.featured ? "pri" : ""}" data-buy2="${p.id}">Buy</button></div>`).join("")}</div>
       <p class="note">Secure payment by Stripe. Credits never expire. Failed AI suggestions are refunded automatically.</p>
       <div class="actions"><button type="button" class="ghost" id="a-out">Sign out</button></div>`;
     body.querySelectorAll("[data-buy2]").forEach((b) => (b.onclick = () => startBuy(b.dataset.buy2)));
@@ -786,7 +798,7 @@ function showResume(sess) {
     <span class="rs-act"><button type="button" class="pri" id="rs-go">Resume</button><button type="button" class="ghost" id="rs-no">Discard</button></span>`;
   b.hidden = false; pendingResume = sess;
   $("#rs-go").onclick = () => resumeNow();
-  $("#rs-no").onclick = () => { dismissResume(true); toast("Saved work discarded."); };
+  $("#rs-no").onclick = (ev) => twoStep(ev.currentTarget, "Press again to discard", () => { dismissResume(true); toast("Saved work discarded."); });
 }
 async function resumeNow() {
   const sess = pendingResume; if (!sess) return;

@@ -1,7 +1,7 @@
 // Starts the app once the page has painted and its fonts have arrived, so on a slow connection the text appears first
 // and the app script does not compete with it for bandwidth.
 let started = false;
-const go = () => { if (started) return; started = true; import("./main.js?v=0f77327a17"); };
+const go = () => { if (started) return; started = true; import("./main.js?v=454703635f"); };
 if (document.readyState === "complete") go(); else { addEventListener("load", go, { once: true }); setTimeout(go, 3000); }
 
 // Until the app is running, nothing the visitor does is lost: a drop zone still opens the file chooser, and files that

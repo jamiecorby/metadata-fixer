@@ -35,7 +35,7 @@ export function pickLocation(o) {
       if (!mark) mark = L.circleMarker(ll, { radius: 8, color: "#0f766e", weight: 3, fillOpacity: 0.9 }).addTo(map); else mark.setLatLng(ll);
       if (o.area) { const r = +rad.value * 1000; if (!circ) circ = L.circle(ll, { radius: r, color: "#0f766e", weight: 1, fillOpacity: 0.08 }).addTo(map); else { circ.setLatLng(ll); circ.setRadius(r); } }
       else if (circ) { circ.remove(); circ = null; }
-      $("#map-pos").textContent = `${cur.la.toFixed(5)}, ${cur.lo.toFixed(5)}${name ? " . " + name : ""}`;
+      $("#map-pos").textContent = `${cur.la.toFixed(5)}, ${cur.lo.toFixed(5)}${name ? " · " + name : ""}`;
       $("#map-ok").disabled = false;
     };
     $("#map-ok").disabled = !cur; $("#map-pos").textContent = cur ? "" : "Search, or tap the map to drop a pin.";
@@ -59,7 +59,7 @@ export function pickLocation(o) {
       try {
         const res = await geocode(q);
         $("#map-results").innerHTML = res.map((x, i) => `<button type="button" class="res" data-i="${i}">${x.name.replace(/[&<>"]/g, "")}</button>`).join("") || '<p class="note">No places found.</p>';
-        $("#map-results").onclick = (ev) => { const b = ev.target.closest(".res"); if (!b) return; const x = res[+b.dataset.i]; cur = { la: x.la, lo: x.lo }; name = x.name; if (o.area) { rad.value = String(Math.max(1, Math.min(500, x.r))); $("#map-r-val").textContent = rad.value + " km"; } $("#map-results").innerHTML = ""; safe(() => { if (map) map.setView([x.la, x.lo], o.area ? Math.max(4, 12 - Math.round(Math.log2(+rad.value || 1))) : 13); draw(); }); if (!map) { $("#map-pos").textContent = `${x.la.toFixed(5)}, ${x.lo.toFixed(5)} . ${x.name}`; $("#map-ok").disabled = false; } };
+        $("#map-results").onclick = (ev) => { const b = ev.target.closest(".res"); if (!b) return; const x = res[+b.dataset.i]; cur = { la: x.la, lo: x.lo }; name = x.name; if (o.area) { rad.value = String(Math.max(1, Math.min(500, x.r))); $("#map-r-val").textContent = rad.value + " km"; } $("#map-results").innerHTML = ""; safe(() => { if (map) map.setView([x.la, x.lo], o.area ? Math.max(4, 12 - Math.round(Math.log2(+rad.value || 1))) : 13); draw(); }); if (!map) { $("#map-pos").textContent = `${x.la.toFixed(5)}, ${x.lo.toFixed(5)} · ${x.name}`; $("#map-ok").disabled = false; } };
       } catch (e) { $("#map-results").innerHTML = '<p class="note err">Place search is unavailable right now. Tap the map instead.</p>'; }
     };
     $("#map-go").onclick = doSearch;

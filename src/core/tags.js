@@ -13,6 +13,8 @@ const r6 = (x) => Math.round(x * 1e6) / 1e6;
  *  dev profile key; full bool (full iPhone tag set); label bool; write {date,gps,device} booleans
  * @returns {{tags:object, expect:object, summary:string[]}}
  */
+// Shown to people: dates as 2019-07-04 14:30:00, not the EXIF storage form 2019:07:04 14:30:00.
+const disp = (s) => s.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
 export function buildTags(v) {
   const T = {}, E = {}, S = [];
   const video = v.kind === "video";
@@ -26,7 +28,7 @@ export function buildTags(v) {
       for (const k of ["CreateDate", "ModifyDate", "TrackCreateDate", "TrackModifyDate", "MediaCreateDate", "MediaModifyDate"]) T["QuickTime:" + k] = utc;
       T["Keys:CreationDate"] = local + (off != null ? fmtOffset(off) : "");
       E["QuickTime:CreateDate"] = utc;
-      S.push(`Date ${local}${off != null ? " " + fmtOffset(off) : ""} (stored as ${utc} UTC)`);
+      S.push(`Date ${disp(local)}${off != null ? " " + fmtOffset(off) : ""} (stored as ${disp(utc)} UTC)`);
     } else {
       T["EXIF:DateTimeOriginal"] = local; T["EXIF:CreateDate"] = local; T["EXIF:ModifyDate"] = local;
       const withOff = local + (off != null ? fmtOffset(off) : "");
@@ -34,7 +36,7 @@ export function buildTags(v) {
       if (off != null) for (const k of ["OffsetTime", "OffsetTimeOriginal", "OffsetTimeDigitized"]) T["EXIF:" + k] = fmtOffset(off);
       E["ExifIFD:DateTimeOriginal"] = local;
       if (off != null) E["ExifIFD:OffsetTimeOriginal"] = fmtOffset(off);
-      S.push(`Date ${local}${off != null ? " " + fmtOffset(off) : " (no offset)"}`);
+      S.push(`Date ${disp(local)}${off != null ? " " + fmtOffset(off) : " (no offset)"}`);
     }
   }
   if (!hasDate && v.write.offsetOnly && v.t != null && off != null) {

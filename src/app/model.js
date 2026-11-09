@@ -121,7 +121,7 @@ export function locCands(it) {
   const xm = it.side && it.side.xmp; if (xm && xm.lat != null && xm.lon != null) add({ la: xm.lat, lo: xm.lon, alt: null, src: "xmp", label: "XMP sidecar", conf: 0.95 });
   if (it.ai && it.ai.locations) for (const l of it.ai.locations) {
     const c = clampArea(l.lat, l.lon);
-    add({ la: +c.la.toFixed(4), lo: +c.lo.toFixed(4), alt: null, zone: l.timezone && isZone(l.timezone) ? l.timezone : undefined, src: "ai", label: `AI estimate: ${l.name || "unnamed place"}`, note: `within c. ${Math.round(l.radius_km)} km . ${l.basis}${c.moved ? " (pulled inside your area)" : ""}`, conf: l.confidence * 0.9, place: l.name, radius: l.radius_km });
+    add({ la: +c.la.toFixed(4), lo: +c.lo.toFixed(4), alt: null, zone: l.timezone && isZone(l.timezone) ? l.timezone : undefined, src: "ai", label: `AI estimate: ${l.name || "unnamed place"}`, note: `within c. ${Math.round(l.radius_km)} km · ${l.basis}${c.moved ? " (pulled inside your area)" : ""}`, conf: l.confidence * 0.9, place: l.name, radius: l.radius_km });
   }
   const { prev, next } = neighbours(it);
   for (const nb of [prev, next]) if (nb && nb.loc) add({ la: nb.loc.la, lo: nb.loc.lo, alt: null, src: "sequence", label: `Same as ${nb.name}`, conf: 0.5, place: nb.loc.place });
@@ -195,6 +195,6 @@ export function describe(it) {
   if (it.date) parts.push(human(it.date.t).slice(0, 16)); else if (it.ex && it.ex.date && it.ex.date.t) parts.push(human(it.ex.date.t).slice(0, 16));
   if (it.loc && it.loc.place) parts.push(String(it.loc.place).split(",")[0]);
   else if (it.loc) parts.push(`${it.loc.la.toFixed(2)}, ${it.loc.lo.toFixed(2)}`);
-  return parts.join(" . ") || (it.exState === "pending" ? "Reading..." : "No date");
+  return parts.join(" · ") || (it.exState === "pending" ? "Reading..." : "No date");
 }
 export { human, dayOnly, naive, fmtOffset, offsetFor, zoneLabel };

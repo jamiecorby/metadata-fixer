@@ -106,6 +106,8 @@ async def main():
             # Recover unaffected
             check(L + "Recover session untouched by sanitising", await pg.evaluate("window.__mf.S.items.length===1 && !window.__mf.S.items[0].out"))
             # clear
+            await pg.click("#san-clear"); await asyncio.sleep(0.3)
+            check(L + "first Clear press only asks while sanitised copies exist", await pg.evaluate("document.querySelectorAll('#san-list .san-row').length>0 && document.querySelector('#san-clear').textContent.startsWith('Press again')"))
             await pg.click("#san-clear"); await until(pg, "document.querySelectorAll('#san-list .san-row').length===0")
             check(L + "Clear empties the list and drops the outputs", await pg.evaluate("document.querySelector('#san-zip').disabled && document.querySelector('#san-sum').textContent==='No files yet.'"))
             await ctx.close()
