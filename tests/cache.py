@@ -59,6 +59,8 @@ async def main():
 
         # ---- interruption 1: reload mid-review
         await reload(pg)
+        try: await until(pg, "!document.querySelector('#resume').hidden", 10)   # the banner appears once saved work has been read back
+        except Exception: pass
         check("after a reload the screen is empty but a Resume banner is offered", await pg.evaluate("window.__mf.S.items.length===0 && !document.querySelector('#resume').hidden"))
         txt = await pg.inner_text("#resume")
         check("banner says what was kept and that it clears after 30 minutes", "4 files" in txt and "1 with AI" in txt and "1 marked ready" in txt and "30 minutes" in txt, txt)

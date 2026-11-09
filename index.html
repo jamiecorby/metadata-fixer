@@ -280,8 +280,13 @@ body[data-mode="sanitise"] .site{display:none}
   .dlg footer .pri,.dlg .dlg-foot .pri{flex:1 1 100%}
 }
 @keyframes sheet-in{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+
+/* closing call to action on the landing page */
+.closing{margin-top:48px;padding:28px 24px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:grid;gap:8px;justify-items:start}
+.closing h2{font-size:clamp(22px,3vw,28px);letter-spacing:-.01em}
+.closing .note{font-size:15px;margin:0 0 8px}
 </style>
-<script type="module" src="assets/boot.js?v=454703635f"></script>
+<script type="module" src="assets/boot.js?v=83b94afbf8"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -317,7 +322,7 @@ body[data-mode="sanitise"] .site{display:none}
       <span>or tap to choose files</span>
       <small>JPEG, HEIC, PNG, TIFF, DNG, MP4, MOV · include Google Takeout .json and .xmp sidecars</small>
     </div>
-    <div class="drop-alt"><button id="pickdir" class="ghost">Choose a whole folder</button></div>
+    <div class="drop-alt"><button id="pickdir" class="ghost">Choose a folder</button></div>
     </div>
   </div>
   <div class="how">
@@ -339,6 +344,11 @@ body[data-mode="sanitise"] .site{display:none}
     <details><summary>What does Sanitise files do?</summary><p>It is a separate mode (button at the top) that makes clean copies of photos and videos with embedded metadata removed: EXIF, GPS, dates, camera and software details, XMP, IPTC, comments, thumbnails and previews, rotation tags, colour profiles, Content Credentials manifests and data hidden after the end of the file. Image data is copied unchanged where possible; a file that needs its rotation or colours applied to the pixels is redrawn (and says so). Each result is read back and checked, and the report lists what was removed and what could not be inspected. It never claims that every possible hidden structure is gone: video encoders can leave text inside the video stream itself, which this cannot see. RAW files and GIFs are not supported. Nothing is uploaded, and Recover mode is untouched.</p></details>
     <details><summary>What does the Authenticity check do, and can I trust it?</summary><p>Before export it reads each file's own evidence: Content Credentials (C2PA), the IPTC "digital source type", AI tool and prompt fields (Midjourney, DALL-E, Stable Diffusion, Firefly and others) and camera, lens and date combinations that cannot be right. It gives a 0-100 AI likelihood with a range, the evidence and plain suggestions. It is a heuristic, not proof: an image with no markers can still be AI-made, and a marked image can be genuine. Content Credentials are detected and read but their signatures are not validated here. An optional visual check (1 AI credit per file) can add a second opinion but can never be decisive. It only advises: nothing is blocked, and In Recover mode, Fix can add an accurate disclosure label or correct inconsistent metadata, but never removes or hides AI provenance. The separate Sanitise mode does the opposite on purpose: it removes embedded metadata, including Content Credentials, and says so in its report.</p></details>
     <details><summary>How accurate are AI suggestions?</summary><p>They're estimates from what's visible: season, light, landmarks, signs. Each comes with a confidence and the reasons, and is never applied without your review.</p></details>
+  </div>
+  <div class="closing">
+    <h2>Put the dates and places back on your library</h2>
+    <p class="note">Fixing is free and nothing is uploaded. Start with a few files or a whole Google Takeout folder.</p>
+    <div class="rowx closing-acts"><button type="button" class="pri" id="end-pick">Choose photos and videos</button><button type="button" class="ghost" id="end-dir">Choose a folder</button></div>
   </div>
 </section>
 
