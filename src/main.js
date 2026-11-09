@@ -1,5 +1,6 @@
 // Metadata Fixer - application shell and UI.
 import { zipBlobs } from "./app/zipstream.js";
+import { plansHTML } from "./app/plans.js";
 import { CONFIG } from "./config.js";
 import { S, MONTHS, PHOTO, VIDEO, newItem, rezone, dateCands, locCands, autopick, applyAiTop, plan, status, STATUS_LABEL, warnings, describe, itemZone, zoneLabel, monthCtx, rangeCtx, inCtxDate, inCtxArea, zoneAt } from "./app/model.js";
 import { human, exif, parseStamp, naive } from "./core/time.js";
@@ -664,8 +665,7 @@ $("#btn-help").onclick = () => $("#dlg-help").showModal();
 
 /* ------------------------------------------------------------------ account + pricing */
 function renderPlans() {
-  const free = `<div class="plan"><b>Free</b><div class="price">$0</div><div class="cr">${CONFIG.starterCredits} AI credits to start</div><p>Unlimited fixing: existing metadata, Takeout and XMP sidecars, file names, bulk edits, maps, templates, audit log.</p><button type="button" id="plan-free">Start now</button></div>`;
-  $("#plans").innerHTML = free + CONFIG.packs.map((p) => `<div class="plan${p.featured ? " featured" : ""}"><b>${p.credits.toLocaleString()} credits</b><div class="price">${p.price}</div><div class="cr">${p.note}</div><p>AI date and place suggestions for ${p.credits.toLocaleString()} photos or videos.</p><button type="button" class="${p.featured ? "pri" : ""}" data-buy="${p.id}">Buy</button></div>`).join("");
+  if (!$("#plan-free")) $("#plans").innerHTML = plansHTML(CONFIG);
   $("#plan-free").onclick = () => $("#pick").click();
   $$("[data-buy]").forEach((b) => (b.onclick = () => startBuy(b.dataset.buy)));
 }
@@ -712,6 +712,7 @@ $("#lnk-support").href = CONFIG.supportUrl;
   addEventListener("resize", measure); measure();
   new MutationObserver(measure).observe(bar, { attributes: true, attributeFilter: ["hidden"] }); }
 /* a drop zone is a button: Enter or Space opens the file chooser */
+window.__mfReady = true; // boot.js stops handling early input from here on
 const openPicker = (d) => { const inp = document.getElementById(d.dataset.for); if (inp) inp.click(); };
 document.addEventListener("click", (e) => { const d = e.target.closest && e.target.closest(".drop"); if (d) openPicker(d); });
 document.addEventListener("keydown", (e) => { const d = e.target && e.target.classList && e.target.classList.contains("drop") ? e.target : null; if (d && !e.repeat && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openPicker(d); } });
@@ -856,3 +857,5 @@ const warm = () => loadEngine().catch(() => {});
 ["#drop", "#pickdir", "#plan-free"].forEach((sel) => { const el = $(sel); if (el) { el.addEventListener("pointerenter", warm, { once: true }); el.addEventListener("touchstart", warm, { once: true, passive: true }); } });
 addEventListener("dragenter", warm, { once: true });
 window.__mf = { S, status, plan, renderAll, refresh, session, openExport };
+// files chosen or dropped before the app had started (see boot.js)
+if (window.__early && window.__early.length) { const f = window.__early; window.__early = null; addFiles(f); }

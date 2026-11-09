@@ -123,6 +123,25 @@ async def run_motion(b):
     n = await pg.evaluate("""[...document.querySelectorAll('*')].filter(e => { const s = getComputedStyle(e); return (parseFloat(s.transitionDuration) > 0.011 || parseFloat(s.animationDuration) > 0.011) && s.transitionProperty !== 'none' }).length""")
     if n: add("P2", "reduced-motion", f"{n} elements still animate under prefers-reduced-motion")
     await ctx.close()
+async def run_early(b):
+    # The app script starts after the first paint (boot.js). Files chosen before it runs must not be lost, and a file
+    # dropped on the page must not make the browser navigate away.
+    ctx = await b.new_context(viewport={"width": 1280, "height": 800}); pg = await ctx.new_page()
+    gate = asyncio.Event()
+    async def hold(route):
+        await gate.wait(); await route.continue_()
+    await pg.route("**/assets/main.js*", hold)
+    await pg.goto(BASE, wait_until="domcontentloaded"); await pg.wait_for_selector("#drop")
+    await asyncio.sleep(0.5)
+    if await pg.evaluate("!!window.__mfReady"): add("P1", "early input", "app started despite main.js being held (test setup void)")
+    await pg.set_input_files("#pick", [FX + "plain.png"])
+    dropped = await pg.evaluate("""() => { const dt = new DataTransfer(); dt.items.add(new File(['x'], 'early.jpg', {type: 'image/jpeg'}));
+        const ev = new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}); document.body.dispatchEvent(ev); return ev.defaultPrevented }""")
+    if not dropped: add("P1", "early input", "a file dropped before the app started is not intercepted (the browser would open it)")
+    gate.set()
+    try: await until(pg, "window.__mf && window.__mf.S.items.length === 2", 30)
+    except Exception: add("P1", "early input", "files chosen or dropped before the app started were lost: " + str(await pg.evaluate("window.__mf ? window.__mf.S.items.map(x => x.name) : 'no app'")))
+    await ctx.close()
 async def run_zoom(b):
     ctx = await b.new_context(viewport={"width": 640, "height": 400}); pg = await ctx.new_page(); await pg.goto(BASE); await pg.wait_for_selector("#drop")
     o = await pg.evaluate("document.documentElement.scrollWidth-innerWidth")
@@ -135,7 +154,7 @@ async def main():
             for sc in ("light", "dark"):
                 if vn == "narrow" and sc == "dark": continue
                 await run_view(b, vn, vo, sc)
-        await run_motion(b); await run_zoom(b); await b.close()
+        await run_motion(b); await run_zoom(b); await run_early(b); await b.close()
 asyncio.run(main())
 p1 = [f for f in found if f[0] == "P1"]; p2 = [f for f in found if f[0] == "P2"]
 print(f"\nfindings: P1 {len(p1)}  P2 {len(p2)}  P3 {len(found)-len(p1)-len(p2)}")

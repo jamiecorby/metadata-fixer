@@ -4,11 +4,15 @@
   "version": "2.0.0",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "lighthouse": "node scripts/lighthouse.mjs"
   },
   "devDependencies": {
+    "@fontsource/ibm-plex-mono": "5.2.7",
+    "@fontsource/ibm-plex-sans": "5.2.8",
     "axe-core": "^4.10.2",
-    "esbuild": "0.24.0"
+    "esbuild": "0.24.0",
+    "lighthouse": "12.6.1"
   },
   "dependencies": {
     "@6over3/zeroperl-ts": "1.0.10",
