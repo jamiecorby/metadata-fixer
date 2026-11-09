@@ -38,7 +38,6 @@ CHECK_JS = """() => {
   return out;
 }"""
 async def axe(pg, where):
-    await pg.wait_for_function("1", timeout=1000) if False else None
     await pg.evaluate("new Promise(r => setTimeout(r, 450))")  # let the toast fade settle
     await pg.evaluate(AXE)
     r = await pg.evaluate("""async () => { const r = await axe.run({exclude: [['#toast']]}, {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa','best-practice']}}); return r.violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length, sample: v.nodes.slice(0, 3).map(n => n.target.join(' ') + ' :: ' + (n.failureSummary || '').split('\\n').slice(0, 2).join(' '))})) }""")
@@ -77,6 +76,8 @@ async def run_view(b, vname, opts, scheme):
     # Enter and Space on the focused drop zone must each ask the browser for the file chooser (asserted as a click on the
     # hidden input; headless Chromium does not reliably surface the native chooser event, which is not our code).
     await pg.evaluate("window.__pc = 0; document.getElementById('pick').addEventListener('click', e => { window.__pc++; e.preventDefault() })")
+    await pg.click("#drop b"); await asyncio.sleep(0.15)
+    if await pg.evaluate("window.__pc") != 1: add("P1", tag, "clicking the drop zone text does not open the chooser exactly once")
     for key in ("Enter", "Space"):
         before = await pg.evaluate("window.__pc"); await pg.focus("#drop"); await pg.keyboard.press(key); await asyncio.sleep(0.15)
         if await pg.evaluate("window.__pc") != before + 1: add("P1", tag, f"{key} on the drop zone does not open the file chooser")
@@ -85,10 +86,15 @@ async def run_view(b, vname, opts, scheme):
     await pg.set_input_files("#pick", [FX + n for n in FILES])
     await until(pg, "window.__mf.S.items.length===4 && window.__mf.S.items.every(x=>x.exState==='done')")
     await asyncio.sleep(1.2); await shot(pg, f"{vname}-{scheme}-2-grid"); await checks(pg, f"{tag} grid")
-    await pg.evaluate("window.scrollTo(0, 9999)"); await asyncio.sleep(0.2)
-    ov = await pg.evaluate("(()=>{const h=document.querySelector('.top').getBoundingClientRect(),l=document.querySelector('.libbar').getBoundingClientRect();return Math.round(h.bottom-l.top)})()")
-    if ov > 1: add("P1", tag, f"sticky toolbar sits {ov}px under the header")
-    await pg.evaluate("(()=>{const t=document.querySelector('#toast');t.textContent='Added 4 files';t.classList.add('show')})()"); await asyncio.sleep(0.4)
+    await pg.evaluate("(()=>{const sp=document.createElement('div');sp.id='ux-spacer';sp.style.height='2400px';document.querySelector('.lib').append(sp)})()")
+    await pg.evaluate("window.scrollTo(0, 600)"); await asyncio.sleep(0.3)
+    if await pg.evaluate("document.scrollingElement.scrollTop") < 100: add("P2", tag, "harness could not scroll the page, sticky check is void")
+    gap = await pg.evaluate("(()=>{const h=document.querySelector('.top').getBoundingClientRect(),l=document.querySelector('.libbar').getBoundingClientRect();return Math.round(l.top-h.bottom)})()")
+    if abs(gap) > 1: add("P1", tag, f"sticky toolbar is {gap}px from the header (negative = hidden under it)")
+    await pg.evaluate("document.getElementById('ux-spacer').remove()")
+    if await pg.evaluate("document.querySelector('#toast').getAttribute('role')") != "status": add("P2", tag, "toast has no role=status")
+    await until(pg, "!document.querySelector('#toast').classList.contains('show')", 20); await asyncio.sleep(0.4)  # let the app's own toast finish first
+    await pg.evaluate("(()=>{const t=document.querySelector('#toast');t.textContent='Added 4 files';t.classList.add('show');clearTimeout(window.__tt);window.__tt=setTimeout(()=>{},0)})()"); await asyncio.sleep(0.5)
     ov = await pg.evaluate("(()=>{const t=document.querySelector('#toast').getBoundingClientRect(),b=document.querySelector('#bar').getBoundingClientRect();return Math.round(t.bottom-b.top)})()")
     if ov > 0: add("P2", tag, f"toast overlaps the bottom bar by {ov}px")
     await pg.evaluate("document.querySelector('#toast').classList.remove('show')")
@@ -96,11 +102,18 @@ async def run_view(b, vname, opts, scheme):
     await pg.click("#grid .tile >> nth=0"); await asyncio.sleep(0.6); await shot(pg, f"{vname}-{scheme}-3-inspector"); await checks(pg, f"{tag} inspector")
     if vname != "desktop":
         if await pg.evaluate("!document.querySelector('.insp .back')||getComputedStyle(document.querySelector('.insp .back')).display==='none'"): pass
+    if vname != "desktop" and not await pg.evaluate("document.querySelector('.insp').classList.contains('open')"): add("P1", tag, "details sheet did not open on tile tap")
     await pg.keyboard.press("Escape"); await asyncio.sleep(0.4)
     if await pg.evaluate("document.querySelector('.insp').classList.contains('open')"):
         add("P2", tag, "Escape does not close the details sheet"); await pg.click(".insp .back"); await asyncio.sleep(0.4)
     await open_close(pg, "#btn-context", "#dlg-context", f"{tag} trip details")
     await pg.click("#btn-mode"); await pg.wait_for_selector("#sanitise:not([hidden])"); await asyncio.sleep(0.8)
+    await pg.evaluate("window.__sc = 0; document.getElementById('san-pick').addEventListener('click', e => { window.__sc++; e.preventDefault() })")
+    for key in ("Enter", "Space"):
+        b0 = await pg.evaluate("window.__sc"); await pg.focus("#san-drop"); await pg.keyboard.press(key); await asyncio.sleep(0.15)
+        if await pg.evaluate("window.__sc") != b0 + 1: add("P1", tag, f"{key} on the Sanitise drop zone does not open the file chooser")
+    b0 = await pg.evaluate("window.__sc"); await pg.click("#san-drop b"); await asyncio.sleep(0.15)
+    if await pg.evaluate("window.__sc") != b0 + 1: add("P1", tag, "clicking the Sanitise drop zone text does not open the chooser exactly once")
     await shot(pg, f"{vname}-{scheme}-4-sanitise"); await checks(pg, f"{tag} sanitise")
     await pg.click("#btn-mode")
     if errs: add("P1", tag, f"page errors {errs[:2]}")
