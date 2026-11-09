@@ -247,7 +247,7 @@ function renderInspector() {
   <h3>Location</h3>
   ${l ? `<div class="src"><b>${SRC[l.src] || l.src}</b>${l.place ? " · " + esc(l.place) : ""} ${confBar(l.conf)}</div>` : '<div class="src">No location. Optional, but it also fixes the time zone.</div>'}
   <div class="two mt6"><label>Latitude<input id="i-la" inputmode="decimal" value="${l ? l.la : ""}"></label><label>Longitude<input id="i-lo" inputmode="decimal" value="${l ? l.lo : ""}"></label></div>
-  <div class="rowx mt8"><button type="button" id="i-map">Pick on map</button>${l ? '<button type="button" class="ghost" id="i-noloc">Remove</button>' : ""}</div>
+  <div class="rowx mt8"><button type="button" id="i-map">Choose on map</button>${l ? '<button type="button" class="ghost" id="i-noloc">Remove</button>' : ""}</div>
   <div class="cands">${lc.slice(0, nL).map((c, i) => candBtn(c, i, "l")).join("")}</div>
   ${lc.length > 3 ? `<button type="button" class="more" id="i-moreL">${showAll.l ? "Fewer" : "All " + lc.length + " suggestions"}</button>` : ""}
 
@@ -310,7 +310,7 @@ function renderBulk(el, sel) {
    <div class="bulk"><h3 class="mt0">Set date and time</h3><div class="rowx"><input type="datetime-local" step="1" id="b-dt" aria-label="Date and time"><button id="b-dt-go">Set for all</button></div>
      <p class="note">Or spread across a period in file order:</p><div class="two"><input type="datetime-local" step="1" id="b-from" aria-label="From"><input type="datetime-local" step="1" id="b-to" aria-label="To"></div><button class="mt6" id="b-spread">Spread ${sel.length} files</button></div>
    <div class="bulk"><h3 class="mt0">Shift times</h3><p class="note">Fix a camera clock or time zone mistake on ${dated} dated file${dated === 1 ? "" : "s"}.</p><div class="rowx"><select class="wauto" id="b-sign" aria-label="Direction"><option value="1">Later by</option><option value="-1">Earlier by</option></select><input class="w90" id="b-h" aria-label="Hours" inputmode="numeric" placeholder="hours"><input class="w90" id="b-m" aria-label="Minutes" inputmode="numeric" placeholder="minutes"><button id="b-shift">Shift</button></div></div>
-   <div class="bulk"><h3 class="mt0">Location</h3><div class="rowx"><button id="b-map">Pick on map for all</button><button class="ghost" id="b-noloc">Remove location</button></div></div>
+   <div class="bulk"><h3 class="mt0">Location</h3><div class="rowx"><button id="b-map">Choose on map for all</button><button class="ghost" id="b-noloc">Remove location</button></div></div>
    <div class="bulk"><h3 class="mt0">Time zone and device</h3><div class="two"><label>Time zone<input id="b-zone" list="zones" placeholder="Automatic"></label><label>Device<select id="b-dev">${devOptions("", true)}</select></label></div><button class="mt6" id="b-zd">Apply</button></div>
    <div class="bulk"><h3 class="mt0">Suggestions</h3><div class="rowx"><button id="b-best">Use best suggestion</button><button id="b-ai2">AI suggest (${sel.length})</button></div><p class="note">Best suggestion takes the strongest evidence for each file, including AI results already received.</p></div>
   </div>
@@ -733,6 +733,7 @@ document.addEventListener("keydown", (e) => { const d = e.target && e.target.cla
 $("#pick").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
 $("#dirpick").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
 $("#pickdir").onclick = () => $("#dirpick").click();
+$("#end-pick").onclick = () => $("#pick").click(); $("#end-dir").onclick = () => $("#dirpick").click();
 $("#add-more").onclick = () => $("#pick").click();
 $("#add-dir").onclick = () => $("#dirpick").click();
 let dragDepth = 0;
