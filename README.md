@@ -44,3 +44,9 @@ npm run build        # bundles src/ -> assets/, copies the engine to w/, writes 
 npm test             # unit, engine, damaged-file, browser end-to-end and map suites (BASE=<url> tests a live site; PERF=1 adds the 200-file run)
 ```
 Source lives in `src/`; `index.html`, `assets/`, `w/` and the legal pages at the root are build output served by GitHub Pages.
+
+## Quality gates
+
+- `npm test` runs every suite, including the UI/UX conformance harness (`tests/ux.py`: WCAG 2.2 AA via axe, target sizes, focus, keyboard, dialogs, reduced motion, phone layout, long names, early input). Set `PERF=1` to add the 200-file run.
+- `npm run lighthouse` scores every page on mobile and desktop and fails below 100 in any category. Set `BASE=https://jamiecorby.github.io/metadata-fixer` to test the live site.
+- Fonts are IBM Plex (SIL OFL 1.1), subset to the characters the interface uses by `python3 scripts/subset-fonts.py` (needs fonttools and brotli). The output in `src/fonts/` is committed, so the normal build needs no Python.
